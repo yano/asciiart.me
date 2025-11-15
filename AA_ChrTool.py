@@ -6,6 +6,7 @@ import numpy as np
 from PIL import Image
 import PIL.Image
 import operator
+import os
 
 from AA_Dijkstra import Edge, Dijkstra
 
@@ -37,43 +38,63 @@ class ChrTool:
         # Windowsのメモ帳で文字コードを utf-8 に変換したものを読み込んでいる
         self.chrDict = self.getChrListFrom18Line("chrDict_20170327_utf8.txt")
 
+
     def getChrListFrom18Line(self, filename):
+        fpath = os.path.join(os.path.dirname(__file__), filename)
 
         chrList = []
-        f = open(filename)
 
-        # １行目はDB内の登録文字数
-        line = f.readline()  # 1行を文字列として読み込む(改行文字も含まれる)
-        chr_num = int(line)
+        with open(fpath, "r", encoding="utf-8") as f:
 
-        for i in range(chr_num):
+            # --- 1行目：文字数 ---
+            line = f.readline()
+            if not line:
+                raise ValueError("chrDict file is empty")
+            # 改行だけ除去（空白は残す）
+            line = line.rstrip("\r\n")
+            chr_num = int(line)
 
-            # http://www.ctrlshift.net/blog/?id=20080927_convert_unicode_utf8_in_python
-            # https://gist.github.com/devlights/4561968
+            for _ in range(chr_num):
 
-            chr_tmp = f.readline() # 文字
-            chr_tmp = chr_tmp.decode('utf-8') # utf-8をunicode にデコードして保持しておく
-            chr_tmp = chr_tmp[0]
-            chr = chr_tmp
+                # --- 文字行（空白をstripしないこと！）---
+                chr_line = f.readline()
+                if not chr_line:
+                    raise ValueError("Unexpected EOF while reading character")
+                chr_line = chr_line.rstrip("\r\n")  # 空白は残す
+                if chr_line == "":
+                    raise ValueError("Character line is empty (should not be empty).")
 
-            chrIm_w_str = f.readline() # 文字の幅
-            chrIm_w = int(chrIm_w_str)
+                # 文字は常に先頭1文字
+                chr_char = chr_line[0]
 
-            # Chr
-            chrTmp = Chr(chr, 18, chrIm_w)
+                # --- 幅行（ここは数字だけなので strip OK）---
+                width_line = f.readline()
+                if not width_line:
+                    raise ValueError(f"Unexpected EOF while reading width for character {chr_char}")
+                chrIm_w = int(width_line.strip())
 
-            for j in range(18):
-                line = f.readline()
-                for k in range(chrTmp.chrIm_w):
-                    if line[k] == '1':
-                        chrTmp.chrIm[j, k] = 0
-                    else:
-                        chrTmp.chrIm[j, k] = 255
+                # --- Chr オブジェクト作成（高さは18固定）---
+                chrTmp = Chr(chr_char, 18, chrIm_w)
 
-            chrList.append(chrTmp)
+                # --- 18 行の bitmap ---
+                for j in range(18):
+                    line = f.readline()
+                    if not line:
+                        raise ValueError(f"Unexpected EOF while reading bitmap for {chr_char}")
+                    line = line.rstrip("\r\n")  # 改行のみ除去
 
-        f.close()
+                    # 幅より短い行が来た場合は 0 で埋める（保険）
+                    if len(line) < chrIm_w:
+                        line = line.ljust(chrIm_w, '0')
+
+                    # ビットマップ読み込み
+                    for k in range(chrIm_w):
+                        chrTmp.chrIm[j, k] = 0 if line[k] == '1' else 255
+
+                chrList.append(chrTmp)
+
         return chrList
+
 
     def getAA(self, imgGray): #, comment):
 

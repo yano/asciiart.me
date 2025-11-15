@@ -58,6 +58,9 @@ if __name__ == '__main__':
         print('done.')
 
         # output asciiart
-        fout = open(filename_aa, "w")
-        fout.write(aa_code.encode('utf-8'))
-        fout.close()
+        # fout = open(filename_aa, "w")
+        # fout.write(aa_code.encode('utf-8'))
+        # fout.close()
+
+        with open(filename_aa, "w", encoding="utf-8", newline="\n") as fout:
+            fout.write(aa_code)
