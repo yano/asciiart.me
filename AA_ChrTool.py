@@ -1,222 +1,258 @@
-﻿#coding:utf-8
+#coding:utf-8
 
-import sys
-import math
+"""Core routines that convert processed images into ASCII art."""
+
+from __future__ import annotations
+
+import io
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Dict, List, Optional, Sequence, Tuple
+
 import numpy as np
-from PIL import Image
-import PIL.Image
-import operator
+from PIL import Image, ImageDraw, ImageFont
 
-from AA_Dijkstra import Edge, Dijkstra
+CHAR_HEIGHT = 18
+DEFAULT_DICTIONARY = Path(__file__).with_name("chrDict_20170327_utf8.txt")
 
-class Chr:
-    def __init__(self, _chr, _chrIm_h, _chrIm_w):
-        self.chr = _chr
-        self.chrIm_h = _chrIm_h
-        self.chrIm_w = _chrIm_w
-        self.chrIm = np.zeros((self.chrIm_h, self.chrIm_w), dtype=np.uint8)
+
+@dataclass(frozen=True)
+class GlyphTemplate:
+    """Representation of a single glyph from the dictionary."""
+
+    char: str
+    matrix: np.ndarray
+    width: int
+    centered: np.ndarray
+    norm: float
+    mean: float
 
     @classmethod
-    def frominstance(cls, instance):
-        new_instance = cls(instance.chr, instance.chrIm_w, instance.chrIm_h)
-        for y in range(instance.chrIm_h):
-            for x in range(instance.chrIm_w):
-                new_instance.chrIm[y, x] = instance.chrIm[y, x]
-        return new_instance
+    def from_dictionary(cls, char: str, width: int, rows: Sequence[str]) -> "GlyphTemplate":
+        matrix = np.full((CHAR_HEIGHT, width), 255, dtype=np.uint8)
+        for y, row in enumerate(rows):
+            row = row.rstrip("\r\n")
+            for x in range(min(width, len(row))):
+                matrix[y, x] = 0 if row[x] == "1" else 255
+
+        # Focus matching on the lower 16 rows where most glyph strokes live.
+        body = matrix[2:, :].astype(np.float32) / 255.0
+        mean = float(body.mean())
+        centered = body.ravel() - mean
+        norm = float(np.linalg.norm(centered) + 1.0e-6)
+        return cls(char=char, matrix=matrix, width=width, centered=centered, norm=norm, mean=mean)
+
+    @classmethod
+    def blank(cls, width: int = 1) -> "GlyphTemplate":
+        matrix = np.full((CHAR_HEIGHT, width), 255, dtype=np.uint8)
+        body = matrix[2:, :].astype(np.float32) / 255.0
+        mean = float(body.mean())
+        centered = body.ravel() - mean
+        norm = float(np.linalg.norm(centered) + 1.0e-6)
+        return cls(char=" ", matrix=matrix, width=width, centered=centered, norm=norm, mean=mean)
+
+    def match_cost(self, window: np.ndarray) -> float:
+        """Return a normalised cost between this glyph and the given window."""
+
+        body = window[2:, :].astype(np.float32) / 255.0
+        window_flat = body.ravel()
+        window_mean = float(window_flat.mean())
+        centered = window_flat - window_mean
+        norm = float(np.linalg.norm(centered) + 1.0e-6)
+        similarity = float(np.dot(centered, self.centered) / (norm * self.norm))
+        density_penalty = abs(window_mean - self.mean)
+        return 1.0 - similarity + 0.3 * density_penalty
+
 
 class ChrTool:
-    def __init__(self):
-        self.offset = 3
+    """Dictionary driven ASCII art generator."""
 
-        self.header1 = u'<!DOCTYPE html>\r\n<html>\r\n<head>\r\n<meta http-equiv="Content-Type" content="text/html">\r\n<meta charset="UTF-8">\r\n</head>\r\n<body>\r\n'
-        self.header2 = u"<div style=\"font-family:'ＭＳ Ｐゴシック';font-size:16px;line-height:18px;\">\r\n<nobr>\r\n"
-        self.footer1 = u"</nobr>\r\n</div>\r\n"
-        self.footer2 = u"</body>\r\n</html>\r\n"
+    header1 = (
+        "<!DOCTYPE html>\r\n<html>\r\n<head>\r\n<meta http-equiv=\"Content-Type\""
+        " content=\"text/html\">\r\n<meta charset=\"UTF-8\">\r\n</head>\r\n<body>\r\n"
+    )
+    header2 = "<div style=\"font-family:'ＭＳ Ｐゴシック';font-size:16px;line-height:18px;\">\r\n<nobr>\r\n"
+    footer1 = "</nobr>\r\n</div>\r\n"
+    footer2 = "</body>\r\n</html>\r\n"
 
-        # chrDict準備
-        # Windowsのメモ帳で文字コードを utf-8 に変換したものを読み込んでいる
-        self.chrDict = self.getChrListFrom18Line("chrDict_20170327_utf8.txt")
+    def __init__(self, dictionary_path: Optional[str] = None) -> None:
+        self.dictionary_path = Path(dictionary_path) if dictionary_path else DEFAULT_DICTIONARY
+        self.chrDict = self.getChrListFrom18Line(self.dictionary_path)
+        self._glyphs_by_width = self._group_by_width(self.chrDict)
+        self._blank = GlyphTemplate.blank()
 
-    def getChrListFrom18Line(self, filename):
+    @staticmethod
+    def _group_by_width(glyphs: Sequence[GlyphTemplate]) -> Dict[int, List[GlyphTemplate]]:
+        grouped: Dict[int, List[GlyphTemplate]] = {}
+        for glyph in glyphs:
+            grouped.setdefault(glyph.width, []).append(glyph)
+        return grouped
 
-        chrList = []
-        f = open(filename)
+    def getChrListFrom18Line(self, filename: Path) -> List[GlyphTemplate]:
+        glyphs: List[GlyphTemplate] = []
+        with io.open(filename, "r", encoding="utf-8") as f:
+            total = int(f.readline().strip())
+            for _ in range(total):
+                char_line = f.readline()
+                while char_line == "\n":
+                    char_line = f.readline()
+                char = char_line.rstrip("\r\n")
+                char = char[0] if char else " "
 
-        # １行目はDB内の登録文字数
-        line = f.readline()  # 1行を文字列として読み込む(改行文字も含まれる)
-        chr_num = int(line)
+                width_line = f.readline()
+                width = int(width_line.strip())
 
-        for i in range(chr_num):
+                rows = [f.readline().rstrip("\r\n") for _ in range(CHAR_HEIGHT)]
+                glyphs.append(GlyphTemplate.from_dictionary(char, width, rows))
+        return glyphs
 
-            # http://www.ctrlshift.net/blog/?id=20080927_convert_unicode_utf8_in_python
-            # https://gist.github.com/devlights/4561968
+    def _precompute_costs(self, row_block: np.ndarray) -> Tuple[Dict[int, np.ndarray], Dict[int, List[GlyphTemplate]]]:
+        width = row_block.shape[1]
+        cost_table: Dict[int, np.ndarray] = {}
+        glyph_table: Dict[int, List[GlyphTemplate]] = {}
 
-            chr_tmp = f.readline() # 文字
-            chr_tmp = chr_tmp.decode('utf-8') # utf-8をunicode にデコードして保持しておく
-            chr_tmp = chr_tmp[0]
-            chr = chr_tmp
+        for glyph_width, glyphs in self._glyphs_by_width.items():
+            limit = width - glyph_width + 1
+            if limit <= 0:
+                continue
 
-            chrIm_w_str = f.readline() # 文字の幅
-            chrIm_w = int(chrIm_w_str)
+            costs = np.full(limit, np.inf, dtype=np.float32)
+            chosen: List[GlyphTemplate] = [self._blank] * limit
 
-            # Chr
-            chrTmp = Chr(chr, 18, chrIm_w)
+            for x in range(limit):
+                window = row_block[:, x : x + glyph_width]
+                best_cost = float("inf")
+                best_glyph = self._blank
+                for glyph in glyphs:
+                    cost = glyph.match_cost(window)
+                    if cost < best_cost:
+                        best_cost = cost
+                        best_glyph = glyph
+                costs[x] = best_cost
+                chosen[x] = best_glyph
 
-            for j in range(18):
-                line = f.readline()
-                for k in range(chrTmp.chrIm_w):
-                    if line[k] == '1':
-                        chrTmp.chrIm[j, k] = 0
-                    else:
-                        chrTmp.chrIm[j, k] = 255
+            cost_table[glyph_width] = costs
+            glyph_table[glyph_width] = chosen
 
-            chrList.append(chrTmp)
+        return cost_table, glyph_table
 
-        f.close()
-        return chrList
+    def _solve_row(self, row_block: np.ndarray) -> List[str]:
+        width = row_block.shape[1]
+        cost_table, glyph_table = self._precompute_costs(row_block)
 
-    def getAA(self, imgGray): #, comment):
+        best_cost = np.full(width + 1, np.inf, dtype=np.float32)
+        best_choice: List[Tuple[int, GlyphTemplate]] = [(1, self._blank)] * (width + 1)
+        best_cost[width] = 0.0
 
-        im_h = imgGray.shape[0]
-        im_w = imgGray.shape[1]
+        for x in range(width - 1, -1, -1):
+            candidate_cost = best_cost[x + 1] + 0.1
+            candidate_choice = (1, self._blank)
 
-        count = int( (float(im_h) ) / 18.0)
+            for glyph_width, costs in cost_table.items():
+                if x + glyph_width > width:
+                    continue
 
-        routes = []
+                cost_index = x
+                if cost_index >= costs.shape[0]:
+                    continue
+
+                glyph = glyph_table[glyph_width][cost_index]
+                total_cost = costs[cost_index] + best_cost[x + glyph_width]
+
+                if total_cost < candidate_cost:
+                    candidate_cost = total_cost
+                    candidate_choice = (glyph_width, glyph)
+
+            best_cost[x] = candidate_cost
+            best_choice[x] = candidate_choice
+
+        chars: List[str] = []
+        x = 0
+        while x < width:
+            glyph_width, glyph = best_choice[x]
+            chars.append(glyph.char)
+            x += max(glyph_width, 1)
+
+        return chars
+
+    def generate_text_lines(self, imgGray: np.ndarray) -> List[str]:
+        if imgGray.ndim != 2:
+            raise ValueError("Expected a 2-D grayscale image array")
+
+        img_h, img_w = imgGray.shape
+        count = img_h // CHAR_HEIGHT
+        lines: List[str] = []
 
         for i in range(count):
+            y = i * CHAR_HEIGHT
+            row_block = np.ascontiguousarray(imgGray[y : y + CHAR_HEIGHT, :])
+            chars = self._solve_row(row_block)
+            text = "　" + "".join(chars)
+            text = text.replace("  ", "　")
+            text = text.replace("l!", "|.").replace("j!", "｝")
+            lines.append(text)
 
-            print('line : ' + str(i))
+        return lines
 
-            # --- generate ascii art ---
-
-            pow_val =  0.4 * math.log(1.5) / math.log(2.0) + 0.7 # 1.0
-
-            y = i * 18
-
-            flag = True
-            if flag:
-
-                labels = [] # list of int
-                edges = [] # list of Edge
-
-                for x in range(im_w - 20):
-
-                    labels.append(x)
-
-                    min_chrs = [None] * 14
-                    min_vals = [1.0e29] * 14
-
-                    j = 0
-                    for chr_tmp in self.chrDict:
-
-                        # ssd_val = 0.0
-                        # for yy in range(2, chr_tmp.chrIm_h):
-                        #     for xx in range(0, chr_tmp.chrIm_w):
-                        #         ssd_tmp = imgGray[y+yy, x+xx] - chr_tmp.chrIm[yy, xx]
-                        #         ssd_val += ssd_tmp * ssd_tmp
-                        #     if (math.pow(ssd_val, pow_val) >= min_vals[chr_tmp.chrIm_w - 3]):
-                        #         break
-
-                        imgDiff = imgGray[y+2:y+18, x:x+chr_tmp.chrIm_w] - chr_tmp.chrIm[2:18,:]
-                        ssd_val = np.sum(imgDiff * imgDiff)
-
-                        ssd_val = float(math.pow(ssd_val, pow_val))
-
-                        if ssd_val < min_vals[chr_tmp.chrIm_w - 3]:
-                            min_vals[chr_tmp.chrIm_w - 3] = ssd_val
-                            min_chrs[chr_tmp.chrIm_w - 3] = chr_tmp
-
-                        if min_vals[chr_tmp.chrIm_w - 3] == 0.0 and j > 1:
-                            break
-                        j += 1
-
-                    for k in range(14):
-                        if min_chrs[k] != None:
-                            assert min_vals[k] != 1.0e30, 'min_valsがおかしい！'
-                            assert min_chrs[k].chrIm_w == (k + 3), 'min_chrsがおかしい！'
-                            edges.append(Edge(x + min_chrs[k].chrIm_w, x, min_vals[k], min_chrs[k]))
-
-                dijkstra = Dijkstra()
-                route = dijkstra.doDijkstra(labels, edges)
-                routes.append(route)
-
-        # --- finalize ---
-
-        strTmpContents = u''
-
-        for k in range(len(routes)):
-
-            chrs1 = []
-
-            index = 0
-
-            while True:
-
-                if index + 1 >= len(routes[k]):
-                    break
-
-                label_parent = routes[k][index].sLabel
-                label = routes[k][index].eLabel
-                cost = routes[k][index].cost
-                min_index2 = index
-
-                # 同一ラベルを調べる
-                while True:
-
-                    index += 1
-
-                    if index >= len(routes[k]):
-                        break
-
-                    # 同じ eLabel を持つルートを調べる
-                    if routes[k][index].eLabel == label:
-                        # 同一ラベルだったら cost を調べる
-                        if routes[k][index].cost < cost:
-                            cost = routes[k][index].cost
-                            label_parent = routes[k][index].sLabel
-                            min_index2 = index
-                    else:
-                        break
-
-                if index >= len(routes[k]):
-                    break
-
-                chrs1.append(routes[k][min_index2].chr)
-
-                while True:
-
-                    if routes[k][index].eLabel == label_parent:
-                        break
-
-                    index += 1
-
-                    if index >= len(routes[k]):
-                        break
-
-            # 行頭に必ず全角スペースを入れておく
-            strTmpContents += u'　'
-
-            for chr_tmp in chrs1:
-                strTmpContents += chr_tmp.chr
-
-            strTmpContents += u'<br>\r\n'
-
-        # 半角スペースを２つ以上重ねても強制的に１つにまとめられる、の対策
-        # 半角スペース２つを全角スペース１つに置換する（置換ごとに + 1 ドットずれる）
-        strTmpContents = strTmpContents.replace(u'  ', u'　')
-
-        # 太い線が２重線(l!)になってしまっているものを修正する
-        strTmpContents = strTmpContents.replace(u'l!', u'|.')
-        strTmpContents = strTmpContents.replace(u'j!', u'｝')
-
-        strTmp2 = u''
-        strTmp2 += self.header1
-        strTmp2 += self.header2
-        strTmp2 += strTmpContents
-        # strTmp2 += commentTmp
-        strTmp2 += self.footer1
-        strTmp2 += self.footer2
-
+    def generate_ascii_art(self, imgGray: np.ndarray) -> str:
+        lines = self.generate_text_lines(imgGray)
+        strTmpContents = "<br>\r\n".join(lines) + "<br>\r\n"
+        strTmp2 = self.header1 + self.header2 + strTmpContents + self.footer1 + self.footer2
         return strTmp2
 
+    def getAA(self, imgGray: np.ndarray) -> str:
+        return self.generate_ascii_art(imgGray)
+
+    def render_image(
+        self,
+        lines: Sequence[str],
+        font_path: Optional[str] = None,
+        font_size: int = 14,
+        padding: int = 8,
+    ) -> Image.Image:
+        """Render ASCII art lines to a PIL image."""
+
+        if not lines:
+            raise ValueError("No lines provided for rendering")
+
+        if font_path:
+            font = ImageFont.truetype(font_path, font_size)
+        else:
+            font = ImageFont.load_default()
+
+        line_heights = []
+        line_widths = []
+        for line in lines:
+            if hasattr(font, "getbbox"):
+                bbox = font.getbbox(line)
+                line_widths.append(bbox[2] - bbox[0])
+                line_heights.append(bbox[3] - bbox[1])
+            else:
+                size = font.getsize(line)
+                line_widths.append(size[0])
+                line_heights.append(size[1])
+
+        max_width = max(line_widths) + 2 * padding
+        line_height = max(line_heights) + 2
+        total_height = len(lines) * line_height + 2 * padding
+
+        image = Image.new("L", (max_width, total_height), color=255)
+        draw = ImageDraw.Draw(image)
+
+        y = padding
+        for line in lines:
+            draw.text((padding, y), line, font=font, fill=0)
+            y += line_height
+
+        return image
+
+    def save_ascii_image(
+        self,
+        lines: Sequence[str],
+        output_path: Path,
+        font_path: Optional[str] = None,
+        font_size: int = 14,
+        padding: int = 8,
+    ) -> None:
+        image = self.render_image(lines, font_path=font_path, font_size=font_size, padding=padding)
+        image.save(output_path)
