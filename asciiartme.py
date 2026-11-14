@@ -19,39 +19,35 @@ from AA_ChrTool import ChrTool
 impro = ImPro()
 chrtool = ChrTool()
 
+
+def resize_to_max(image, max_size=800): #640
+    # resize image to max_size
+    im_w, im_h = image.size
+    if im_w >= im_h:
+        if im_w > max_size:
+            return image.resize((max_size, int(im_h * float(max_size) / im_w)), Image.LANCZOS)
+    else:
+        if im_h > max_size:
+            return image.resize((int(im_w * float(max_size) / im_h), max_size), Image.LANCZOS)
+    return image
+
+
 if __name__ == '__main__':
 
     image = Image.open(sys.argv[1])
-        
+
     filename =  os.path.splitext(sys.argv[1])
-    
+
     if image != None:
 
         # アップロードパスを設定する
         filename_aa = filename[0] + '.html'
 
-        image_size = image.size
-        im_w = image_size[0]
-        im_h = image_size[1]
-
-        max_size = 800 #640
-
-        # resize image to max_size
-        img_im = None
-        if im_w >= im_h:
-            if im_w > max_size:
-                img_im = image.resize((max_size, int(im_h * float(max_size) / im_w)), Image.ANTIALIAS)
-            else:
-                img_im = image
-        else:
-            if im_h > max_size:
-                img_im = image.resize((int(im_w * float(max_size) / im_h), max_size), Image.ANTIALIAS)
-            else:
-                img_im = image
+        img_im = resize_to_max(image)
 
         # image pre-processing
         img_im = impro.edgeDetect(img_im)
-        
+
         # generate asciiart
         aa_code = chrtool.getAA(img_im)
 
