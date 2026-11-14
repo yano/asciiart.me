@@ -62,6 +62,20 @@ python -m aame.candidates luckystar01.jpg --out out/pick
 the top of `aame/lineart.py`) and also needs torch. `--face-gain`, `--color-edges face` and
 `--fill face` use the anime face model from the same package.
 
+## Evaluation
+
+`aaeval` renders the AA with the real font (pixel-exact with Edge for MS PGothic 16px, Windows only)
+and scores it against the line drawing. Requires `pip install -r requirements-aame.txt`.
+
+```
+python -m aaeval.run_engine miku.png --out out/engine   # compare legacy and v1
+python -m aaeval.compare_lineart miku.png --out out/lineart   # compare line-art methods
+python -m aaeval.compare_cost miku.png --out out/cost         # compare v1 and v2 matching costs
+python -m aaeval.compare_cost miku.png --out out/cost_color_face --color-edges face
+python -m aaeval.run_baseline miku.png                  # run and score asciiartme.py itself
+python -m aaeval.check_render miku.html                 # verify the renderer against Edge
+```
+
 ## Demo
 
 http://asciiart.me/
