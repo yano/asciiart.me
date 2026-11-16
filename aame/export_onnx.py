@@ -5,7 +5,8 @@
 
 変換するのは Web アプリが使う3つ:
 
-  manga_line.onnx  線画化（manga_line、erika.pth）。入力 1x1xHxW の灰色 0..255、出力 1x1xHxW（白地に黒線、0..255 の外にもはみ出す）
+  manga_line.onnx  線画化（manga_line、erika.pth）。入力 1x1xHxW の灰色 0..255、出力 1x1xHxW（白地に黒線、0..255 の外にもはみ出す）。
+                   重みを float16 で持つ（half_weights。約 86MB。float32 のままのものは <src>/manga_line_fp32.onnx）
   teed.onnx        色の境界（TEED、7_model.pth）。入力 1x3xHxW の RGB 0..255、出力 4 つ（各 1x1xHxW、sigmoid の前）
   face_unet.onnx   顔の部位（anime_face_segment の UNet、UNet.pth）。入力 1x3xHxW の RGB 0..1、出力 1x7xHxW（確率）
   isnet_anime.onnx 背景を消す（SkyTNT/anime-segmentation の ISNet。rembg の isnet-anime と同じもの）。入力 1x3x1024x1024、
@@ -72,7 +73,8 @@ NOTICE_HEAD = """Third-party notices for the model files of asciiart.me (aame)
 
 The ONNX files were converted from the following weights, without retraining.
 Each is distributed under the licence of its original repository (MIT or Apache-2.0).
-isnet_anime.onnx is the original ONNX file with its weights stored as float16 (computed in float32).
+manga_line.onnx and isnet_anime.onnx store their weights as float16 (computed in float32).
+In isnet_anime.onnx (the original ONNX file), MaxPool's ceil_mode is turned off (no effect at 1024x1024).
 
 """
 MODEL_OF = {"erika.pth": "manga_line.onnx", "7_model.pth": "teed.onnx", "UNet.pth": "face_unet.onnx",
@@ -175,8 +177,11 @@ def export_manga_line(out, src):
     model = lineart._model("manga").model
     model.load_state_dict(_load(weights("erika.pth", src)))
     x = torch.rand(1, 1, 256, 320) * 255
+    full = src / "manga_line_fp32.onnx"
+    _export(model, x, full, ["gray"], ["line"])
+    # 重みを float16 で持つ（173MB → 86MB。計算は float32 のまま。AA は 1 割弱の行が変わる。webapp_plan.md 23 章）
     path = out / "manga_line.onnx"
-    _export(model, x, path, ["gray"], ["line"])
+    half_weights(full, path)
     with torch.no_grad():
         _check(path, x, [model.float().cpu()(x)])
 

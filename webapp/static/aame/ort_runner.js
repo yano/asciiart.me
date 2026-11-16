@@ -6,10 +6,10 @@
 
 const ORT_VERSION = "1.31.1";
 const ORT_BASE = `https://cdn.jsdelivr.net/npm/onnxruntime-web@${ORT_VERSION}/dist/`;
-export const MODEL_BASE = "https://huggingface.co/5atoya/asciiartme-models/resolve/4ae30771887f76235e7c2ddadf490a68d2f27361/";
+export const MODEL_BASE = "https://huggingface.co/5atoya/asciiartme-models/resolve/fbf65632d589b434eeb1a110783e2208b19e4c69/";
 // 名前 → [ファイル, バイト数, sha256]（aame/get_models.py と同じもの）
 export const FILES = {
-  manga_line: ["manga_line.onnx", 172515325, "c3d7f329bf270fc6f8e431caee6a871d4c344748cc7108f7490408055ec5ec39"],
+  manga_line: ["manga_line.onnx", 86392030, "d486432cada895821b1153a92a64f2ffe9f21bf97e46a8c1c1bdb301de1da20f"],
   teed: ["teed.onnx", 252280, "0ad443441475c06192309b0649b86ab6e6c1cc88cc6441e08ce7a6afa2c3e78c"],
   face: ["face_unet.onnx", 6209211, "acc4b2c0a246a93bb643c8f626ebf4042e1113657fcc22d6286a79f74e656efe"],
   bg: ["isnet_anime.onnx", 88077609, "fdf90b7af006d665c6db2f657b5ef0a2f6e13dab010acb6a223fbc18d04db068"],

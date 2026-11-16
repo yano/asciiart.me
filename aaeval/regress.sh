@@ -7,6 +7,8 @@
 #   out/regress/20261115       … AAME_BACKEND=torch で走らせたとき 1 文字も違わないこと
 #   out/regress/20261116_onnx  … ONNX（GPU）で走らせたとき。TEED は元の TEED（MIT）の重みなので、torch（comfyui_controlnet_aux
 #                                の別の重み）とは色の境界を使う出力が違う。ほかは miku の 1〜2 行が違う（浮動小数の誤差）
+#   out/regress/20261116_half  … manga_line の重みを float16 で持つようにしたあと（models-v2）。それより前の ONNX の基準とは
+#                                manga_line を使う出力が 1 割弱の行で違う
 set -e
 cd "$(dirname "$0")/.."
 B="$1"; mkdir -p "$B"

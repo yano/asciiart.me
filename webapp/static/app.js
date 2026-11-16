@@ -242,7 +242,7 @@ const loaded = { models: false, device: null };
 
 function firstLoadNote() {
   if (engine.kind === "server") return "（初めはモデルの読み込みで 20 秒ほどかかります）";
-  return loaded.models ? "" : "（初めはモデル〈約 180MB〉を読み込みます。2 回目からはブラウザに残したものを使います）";
+  return loaded.models ? "" : "（初めはモデル〈約 93MB〉を読み込みます。2 回目からはブラウザに残したものを使います）";
 }
 
 const MODEL_LABEL = { manga_line: "線画化のモデル", teed: "色の境界のモデル", face: "顔のモデル", bg: "背景を消すモデル" };
