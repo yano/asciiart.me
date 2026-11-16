@@ -7,11 +7,15 @@ import { join } from "node:path";
 const EDGE = "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe";
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-export async function launch({ width = 1600, height = 1000, scale = 1, port = 9333, headless = true } = {}) {
-  const profile = mkdtempSync(join(tmpdir(), "edge-cdp-"));
+// gpu: true で GPU を使う（WebGPU。ヘッドレスでも --enable-unsafe-webgpu で使える）。
+// profile にフォルダを渡すと、そのプロフィールを使い続ける（ブラウザに残したモデルを次の試験でも使う）
+export async function launch({ width = 1600, height = 1000, scale = 1, port = 9333, headless = true, gpu = false,
+  profile = null } = {}) {
+  if (profile) mkdirSync(profile, { recursive: true });
+  else profile = mkdtempSync(join(tmpdir(), "edge-cdp-"));
   const args = [`--remote-debugging-port=${port}`, `--user-data-dir=${profile}`, "--no-first-run",
     "--no-default-browser-check", `--window-size=${width},${height}`, `--force-device-scale-factor=${scale}`,
-    "--disable-gpu", "--hide-scrollbars",
+    ...(gpu ? ["--enable-unsafe-webgpu"] : ["--disable-gpu"]), "--hide-scrollbars",
     // 起動して数秒すると Edge が同期の確認（edge://sync-confirmation-dialog/）を開き、試験のページが
     // 裏に回る（visibilityState が hidden になり、描画が止まって画面の写真が時間切れになる）。
     // 同期を切り、それでも開いた edge:// のページは閉じる（下の closeEdgePages。2026-11-15）
