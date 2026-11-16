@@ -64,16 +64,16 @@ python -m aame.candidates luckystar01.jpg --out out/pick
 
 ### Models
 
-The learned models (`manga_line` line art, the `teed` colour edges and the anime face model used by
-`--face-gain`, `--color-edges face` and `--fill face`) run with onnxruntime from the ONNX files in
-`models/`. Download them from this repository's releases (tag `models-v1`; the files are checked
-with sha256):
+The learned models (`manga_line` line art, the `teed` colour edges, the anime face model used by
+`--face-gain`, `--color-edges face` and `--fill face`, and the background remover of the web app)
+run with onnxruntime from the ONNX files in `models/`. Download them from this repository's releases
+(tag `models-v2`; the files are checked with sha256):
 
 ```
 python -m aame.get_models
 ```
 
-Or make them yourself from the original PyTorch weights, which `aame.export_onnx` downloads from the
+Or make them yourself from the original weights, which `aame.export_onnx` downloads from the
 repositories below (pinned versions, checked with sha256):
 
 ```
@@ -90,6 +90,7 @@ torch through that package.
 | manga_line | `erika.pth` from [ljsabc/MangaLineExtraction_PyTorch](https://github.com/ljsabc/MangaLineExtraction_PyTorch) (release v1) | MIT |
 | TEED | `checkpoints/BIPED/7/7_model.pth` from [xavysp/TEED](https://github.com/xavysp/TEED) | MIT |
 | Anime face segmentation | `model/UNet.pth` from [siyeong0/Anime-Face-Segmentation](https://github.com/siyeong0/Anime-Face-Segmentation) | MIT |
+| Background removal (`isnet_anime.onnx`) | `isnetis.onnx` from [skytnt/anime-seg](https://huggingface.co/skytnt/anime-seg) ([SkyTNT/anime-segmentation](https://github.com/SkyTNT/anime-segmentation); the same file as rembg's `isnet-anime`), with its weights stored as float16 (88 MB instead of 176 MB; computed in float32, the output is the same within 3e-6) | Apache-2.0 |
 
 `models/THIRD_PARTY_NOTICES.txt` holds these licences and must be kept with the model files.
 `comfyui_controlnet_aux` downloads the same `erika.pth` and `UNet.pth`, but its TEED `7_model.pth`
@@ -107,7 +108,9 @@ image and size (Core i7-8700K, 800 px). On a GPU it takes under 1 s. Environment
 
 A browser front end for `aame`:
 
-0. Drop (or paste) an image and prepare it (or skip this): crop it, set the AA size, and check the
+0. Drop (or paste) an image and prepare it (or skip this): crop it, remove the background (the
+   character stays and the rest turns white, so background lines stay out of the AA; isnet-anime,
+   made for anime pictures, also works fairly well on photos), set the AA size, and check the
    line width. Lines that are too thick for the AA size tend to come out doubled and lines that are
    too thin get lost, so the width is measured at the AA size and can be changed (by growing the
    light or the dark areas; no lines are redrawn). The prepared image and its line art can be
@@ -134,6 +137,7 @@ the current AA uses are listed first, most used first. Spaces are always used. T
 in the browser and applies to the candidates, the sizes, the finished AA and the row alternatives.
 
 The image never leaves your PC: the server runs locally and the browser only talks to it.
+The same page also runs without the server, entirely in the browser (see Browser version below).
 
 ```
 pip install -r requirements-aame.txt -r requirements-webapp.txt
@@ -152,6 +156,32 @@ widths do not scale evenly and the rows drift apart. The other HTML embeds a sub
 font (Saitamaar when the display font is MS PGothic), made on the server with fontTools.
 The server keeps the line art, faces and colour edges of each image and size, so changing a setting
 only re-runs the matcher (about 2 s for an 800px image) and a row's alternatives take about 1.5 s.
+
+## Browser version
+
+The web app also runs with no server at all: the whole engine (`webapp/static/aame/`, a JavaScript
+port of `aame`) runs in a Web Worker, the models run with
+[onnxruntime-web](https://onnxruntime.ai/) on the GPU (WebGPU) and are loaded once from
+[Hugging Face](https://huggingface.co/5atoya/asciiartme-models) (about 180 MB, plus 88 MB for the
+background remover when it is used; the browser keeps them). Images are not sent anywhere. AA are
+limited to 1024 px on the long side. `webapp/static/engine.js` uses the local server when there is
+one and the in-browser engine otherwise (`?engine=local` or `?engine=server` picks one).
+
+```
+python -m webapp.build_static      # writes out/asciiartme/: put it on any static web server
+cd out/asciiartme && python serve.py   # or try it here (Python only, nothing to install)
+```
+
+Opening `index.html` as a file does not work (the browser does not load the modules), and the page
+needs https or localhost for WebGPU. Without WebGPU it runs on the CPU, which is much slower; send
+`Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: require-corp` (as
+`serve.py` and `webapp.server` do) so that it can use several threads. Use a recent Chrome or Edge.
+The HTML with the embedded display font holds the whole font file (about 1 MB) instead of a subset.
+
+On an RTX 3090 (800 px AA): four candidates in about 12 s, four more sizes in about 15 s (the server
+with CUDA: 8 s and 10 s). The AA differs from the server's in about 1 row in 12 (GPU rounding).
+`aaeval/js/` checks the port against the Python engine (`dump_*.py` then `node *_test.mjs`) and
+`aaeval/webapp_test/ui_local.mjs` runs the page in both engines.
 
 ## Evaluation
 

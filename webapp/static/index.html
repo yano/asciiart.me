@@ -15,6 +15,7 @@
     <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 7V5a4 4 0 0 1 8 0v2h.5A1.5 1.5 0 0 1 14 8.5v6a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 14.5v-6A1.5 1.5 0 0 1 3.5 7H4Zm1.5 0h5V5a2.5 2.5 0 0 0-5 0v2Z"/></svg>
     <span>画像は外部に送られません<br>処理はすべて手元の PC の中</span>
   </span>
+  <span id="device" class="device" hidden></span>
   <input id="file" type="file" accept="image/*" hidden>
   <nav class="steps" id="steps" aria-label="手順">
     <button data-step="prep" disabled>0 前処理</button><button data-step="presets" disabled>1 候補</button><button data-step="scales" disabled>2 大きさ</button><button data-step="edit" disabled>3 仕上げ</button>
@@ -71,6 +72,14 @@
           <h2>切り抜き</h2>
           <p class="note">左の画像をドラッグすると、その範囲を切り抜きます。枠の中をドラッグすると枠が動きます。</p>
           <div class="row buttons"><button id="cropReset" class="ghost">切り抜かない</button><span id="cropInfo" class="muted"></span></div>
+        </section>
+        <section>
+          <h2>背景</h2>
+          <div class="row">
+            <span class="label">背景</span>
+            <span class="seg" id="prepBg" role="radiogroup" aria-label="背景"><button data-v="keep">残す</button><button data-v="remove">消す（白くする）</button></span>
+          </div>
+          <p class="note" id="bgNote">人物などを残して、背景を白にします（アニメ絵向けのモデル isnet-anime。写真にもある程度効きます）。背景の線が AA に出なくなります。</p>
         </section>
         <section>
           <h2>大きさ</h2>

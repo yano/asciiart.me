@@ -18,6 +18,7 @@ API:
     GET  /api/images/{id}/source      元の画像を AA の大きさにしたもの（PNG。?scale=）
     GET  /api/presets                 候補の一覧
     POST /api/fonts/{id}/subset       表示フォントから、送った文字だけを抜き出す（woff2。.html に埋め込む）
+    GET  /dict/<辞書のファイル>         当てはめ用の辞書（ブラウザの中のエンジンが使う）
 
 扱う大きさは長辺 MAX_SIDE px まで。それより大きい画像は、送られたときに縮める。
 
@@ -39,12 +40,13 @@ from pathlib import Path
 from typing import Literal, Optional
 
 from fastapi import FastAPI, File, HTTPException, Query, UploadFile
-from fastapi.responses import Response
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from PIL import Image, ImageOps
 from pydantic import BaseModel, Field
 
 from aame import candidates, convert, cost, models, prep
+from aame.glyphs import DICT_FILE
 from aame.lineart import canvas_size
 from aame.session import Session
 
@@ -81,7 +83,8 @@ class Entry:
         self.base = tuple(base) if base else canvas_size(image)
         self.parent = parent
         self.children = []           # 前処理した画像の id（元の画像のとき。新しいものが後ろ）
-        self.measured = OrderedDict()   # (切り抜き, 大きさ) → 線の太さ（前処理で太さだけ変えるとき用）
+        self.measured = OrderedDict()   # (切り抜き, 大きさ, 背景を消すか) → 線の太さ（前処理で太さだけ変えるとき用）
+        self.alphas = OrderedDict()     # 切り抜き → 前景の濃さ（背景を消すとき用。1 枚 1 秒ほどかかるので覚えておく）
         self.sessions = OrderedDict()
 
     def size(self, scale=1.0):
@@ -133,6 +136,7 @@ class PrepRequest(BaseModel):
     crop: Optional[list[float]] = Field(None, min_length=4, max_length=4)
     long: Optional[int] = Field(None, ge=200, le=MAX_SIDE)
     delta: float = Field(0.0, ge=-4.0, le=4.0)
+    bg: bool = False                # 背景を消す（白にする）
     keep: Optional[str] = None      # 画面がいま使っている、前に前処理した画像の id（忘れない）
 
 
@@ -301,8 +305,17 @@ def post_prepare(image_id: str, req: PrepRequest):
     t = time.perf_counter()
     box = crop_box(req)
     image = prep.crop(e.image, box)
+    if req.bg:
+        with _images_lock:
+            alpha = e.alphas.get(box)
+        with _engine:
+            image, alpha = prep.remove_background(image, alpha)
+        with _images_lock:
+            e.alphas[box] = alpha
+            while len(e.alphas) > 4:
+                e.alphas.popitem(last=False)
     size = prep.target_size(image, req.long) if req.long else canvas_size(image)
-    key = (box, size)
+    key = (box, size, req.bg)
     with _images_lock:
         before = e.measured.get(key)
     if before is None:
@@ -434,6 +447,27 @@ def post_subset(font_id: str, req: SubsetRequest):
     buf = io.BytesIO()
     subset.save_font(font, buf, options)
     return Response(buf.getvalue(), media_type="font/woff2")
+
+
+@app.middleware("http")
+async def revalidate(request, call_next):
+    """画面のファイルは毎回確かめてから使わせる（更新したあとに古い JavaScript が混ざらないように）。
+    COOP/COEP を付けて、ブラウザの中のエンジンが CPU で動くときに複数のスレッドを使えるようにする（crossOriginIsolated）。"""
+    response = await call_next(request)
+    if not request.url.path.startswith("/api/"):
+        response.headers.setdefault("Cache-Control", "no-cache")
+    response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
+    response.headers["Cross-Origin-Embedder-Policy"] = "require-corp"
+    return response
+
+
+@app.get("/dict/{name}")
+def get_dict(name: str):
+    """当てはめ用の辞書（ブラウザの中のエンジン〈static/aame/worker.js〉が読む。静的なサイトでは dict/ に置く）。"""
+    path = DICT_FILE.parent / name
+    if name != DICT_FILE.name or not path.is_file():
+        raise HTTPException(404, "辞書がありません")
+    return FileResponse(path, media_type="text/plain; charset=utf-8")
 
 
 app.mount("/", StaticFiles(directory=STATIC, html=True), name="static")

@@ -2,6 +2,7 @@
 """AA にする前の画像の下ごしらえ（Web アプリの「0 前処理」）。
 
 - 切り抜き（crop）と、AA の大きさ（長辺の px）を決める。
+- 背景を消す（remove_background。背景を白にする。アニメ絵向けの isnet-anime）。
 - 絵の線の太さを、AA の大きさに直して測る。太すぎると AA で線が二重になることがあり、
   細すぎると線を拾えないことがあるので、目安から外れていれば知らせる。
 - 線の太さを変える。太くするときは暗い所を、細くするときは明るい所を広げる（erosion /
@@ -41,6 +42,18 @@ def crop(image, box=None):
     if (l, t, r, b) == (0, 0, w, h):
         return image
     return image.crop((l, t, r, b))
+
+
+def remove_background(image, alpha=None):
+    """背景を白にする（前景は aame.models.foreground。isnet-anime）。alpha（前景の濃さ uint8）を渡すとそれを使う。
+    返り値: (白い背景の画像, alpha)。混ぜ方は整数で (rgb × a + 255 × (255 − a) + 127) // 255。"""
+    from aame import models
+    rgb = np.asarray(image.convert("RGB"))
+    if alpha is None:
+        alpha = models.foreground(rgb)
+    a = alpha.astype(np.int32)[..., None]
+    out = (rgb.astype(np.int32) * a + 255 * (255 - a) + 127) // 255
+    return Image.fromarray(out.astype(np.uint8)), alpha
 
 
 def target_size(image, long_side):
