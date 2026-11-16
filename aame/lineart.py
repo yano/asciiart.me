@@ -5,10 +5,13 @@
 学習済みの検出器は AA の大きさの2倍で通してから縮める（細い線を落とさないため）。
 そのあと binarize() で2値にして 1px の線にそろえる。
 
-検出器の実装と重みは ComfyUI の comfyui_controlnet_aux のものを使う（AUX を参照）。
+Web アプリが使う manga_line と teed は、ONNX に変換したもの（aame/models.py）を onnxruntime で動かす。
+ほかの検出器（比較用）は ComfyUI の comfyui_controlnet_aux の実装と重みを torch で動かす（AUX を参照）。
+置き場所は環境変数 AAME_AUX（comfyui_controlnet_aux の src フォルダ）で変えられる。
 dot-e-puppet/kirie/line_methods.py の比較を、任意の縦横比で使えるようにしたもの。
 """
 
+import os
 import sys
 import warnings
 from pathlib import Path
@@ -19,8 +22,12 @@ from PIL import Image
 from scipy import ndimage
 from skimage import filters, morphology
 
-AUX = Path("E:/StableDiffusion/SimpleComfyUi/ComfyUI/custom_nodes/comfyui_controlnet_aux/src")
-DEXINED_WEIGHTS = Path("E:/StableDiffusion/dot-e-puppet/models/dexined/DexiNed_BIPED_10.pth")
+from aame import models
+
+AUX = Path(os.environ.get(
+    "AAME_AUX", "E:/StableDiffusion/SimpleComfyUi/ComfyUI/custom_nodes/comfyui_controlnet_aux/src"))
+DEXINED_WEIGHTS = Path(os.environ.get(
+    "AAME_DEXINED", "E:/StableDiffusion/dot-e-puppet/models/dexined/DexiNed_BIPED_10.pth"))
 MAX_SIZE = 800      # AA にする大きさの長辺（現行と同じ）
 DETECT_SCALE = 2    # 検出器に通すときの拡大率
 # 方法ごとの拡大率（複数あれば、それぞれで検出して強いほうを取る）。書いていない方法は DETECT_SCALE。
@@ -115,6 +122,8 @@ def m_lineart_coarse(big, small):
 
 
 def m_manga_line(big, small):
+    if models.use("manga_line"):
+        return _as_strength(models.manga_line(big))
     return _aux("manga", big)
 
 
@@ -127,6 +136,8 @@ def m_pidinet(big, small):
 
 
 def m_teed(big, small):
+    if models.use("teed"):
+        return _as_strength(models.teed(big))
     return _aux("teed", big)
 
 
@@ -183,11 +194,18 @@ METHODS = {
 }
 
 
-def canvas_size(image, max_size=MAX_SIZE):
-    """AA にする大きさ (幅, 高さ)。長辺が max_size を超えるときだけ縮める。"""
+def canvas_size(image, max_size=MAX_SIZE, scale=1.0):
+    """AA にする大きさ (幅, 高さ)。長辺が max_size を超えるときだけ縮める。
+
+    scale を渡すと、その大きさをさらに scale 倍する（候補を少しずつ違う大きさで作る用。
+    1 より大きければ max_size を超えてもよい）。
+    """
     w, h = image.size
     s = min(1.0, float(max_size) / max(w, h))
-    return (int(w * s), int(h * s)) if s < 1.0 else (w, h)
+    w, h = (int(w * s), int(h * s)) if s < 1.0 else (w, h)
+    if scale != 1.0:
+        w, h = max(1, int(round(w * scale))), max(1, int(round(h * scale)))
+    return w, h
 
 
 COLOR_METHOD = "teed"   # 色の境界を拾うのに使う方法（輪郭の検出器。重みは約 0.25MB）
@@ -204,28 +222,40 @@ def add_color_edges(s, image, where="all"):
 
     where: "all" なら絵の全体、"face" なら顔の中だけ（服の影や背景の境界は足さない）。
     """
-    edge = strength(image, COLOR_METHOD)
+    region = None
+    if where == "face":
+        from aame import regions
+        region = regions.face_weight(image, (s.shape[1], s.shape[0]), gain=2.0) - 1.0
+    elif where != "all":
+        raise ValueError(f"unknown region: {where}")
+    return merge_color_edges(s, strength(image, COLOR_METHOD, size=(s.shape[1], s.shape[0])), region)
+
+
+def merge_color_edges(s, edge, region=None):
+    """add_color_edges の本体。edge は COLOR_METHOD で求めた線の強さ。
+
+    region（0..1 の地図）を渡すと、その値を掛けてから足す（顔の中だけ足す、など）。
+    検出器の結果を使い回したいとき（aame.session）は、こちらを直接呼ぶ。
+    """
     blob = filters.apply_hysteresis_threshold(s, 0.15, 0.4)
     if blob.any():
         away = (ndimage.distance_transform_edt(~blob) - COLOR_NEAR) / COLOR_FEATHER
         edge = edge * np.clip(away, 0.0, 1.0)
-    if where == "face":
-        from aame import regions
-        edge = edge * (regions.face_weight(image, (s.shape[1], s.shape[0]), gain=2.0) - 1.0)
-    elif where != "all":
-        raise ValueError(f"unknown region: {where}")
+    if region is not None:
+        edge = edge * region
     return np.maximum(s, edge).astype(np.float32)
 
 
-def strength(image, method, color=None):
+def strength(image, method, color=None, size=None):
     """PIL の画像を、線の強さ 0..1（AA にする大きさの float32 配列）にする。
 
     color に "face" か "all" を渡すと、色の境界も足す（add_color_edges）。
+    size = (幅, 高さ) を渡すとその大きさで作る（省くと canvas_size(image)）。
     """
     if color:
-        return add_color_edges(strength(image, method), image, color)
+        return add_color_edges(strength(image, method, size=size), image, color)
     image = image.convert("RGB")
-    cw, ch = canvas_size(image)
+    cw, ch = size or canvas_size(image)
     small = np.asarray(image.resize((cw, ch), Image.LANCZOS) if (cw, ch) != image.size else image)
     out = np.zeros((ch, cw), np.float32)
     for k in DETECT_SCALES.get(method, (DETECT_SCALE,)):
@@ -259,6 +289,25 @@ def binarize(s, low=0.15, high=0.4, width=1, min_size=6, dot_area=6):
             for cy, cx in ndimage.center_of_mass(blob, labels, ids[lost]):
                 y, x = min(int(cy), m.shape[0] - 2), min(int(cx), m.shape[1] - 2)
                 m[y:y + 2, x:x + 2] = True
+    if width > 1:
+        m = cv2.dilate(m.astype(np.uint8), np.ones((width, width), np.uint8)) > 0
+    return m
+
+
+def edit_masks(image, size):
+    """画面で直した線画の画像（RGB。赤が描いた線、緑が消した所、黒は直していない所）を、
+    (描いた線, 消した所) の2値の配列（size = (幅, 高さ)）にする。"""
+    im = image.convert("RGB")
+    if im.size != tuple(size):
+        im = im.resize(tuple(size), Image.NEAREST)
+    a = np.asarray(im)
+    return a[..., 0] > 127, a[..., 1] > 127
+
+
+def apply_edit(mask, add, erase, width=1):
+    """1px の線 mask に直しを当てる（消した所の線を除き、描いた線を足す）。
+    width が 2 以上なら、binarize と同じくその太さに太らせる。"""
+    m = (mask & ~erase) | add
     if width > 1:
         m = cv2.dilate(m.astype(np.uint8), np.ones((width, width), np.uint8)) > 0
     return m

@@ -156,8 +156,14 @@ def glyph_cost(glyphs, shift=0):
     return _CACHE[key][1]
 
 
+def forget(glyphs):
+    """glyphs の辞書について覚えた量を捨てる（使わなくなった辞書の分のメモリを空ける）。"""
+    for key in [k for k in _CACHE if k[0] == id(glyphs)]:
+        del _CACHE[key]
+
+
 def costs(mask, glyphs, lam=2.0, phantom=1.5, weight=None, shift=4, slide=0.4,
-          fill=None, fill_gain=0.5):
+          fill=None, fill_gain=0.5, only=None):
     """c[行, x, 文字] = その行の x に文字を置いたときのコスト。x は 0..幅。
 
     mask:    目標の線画（線が True）。細い線（1px）のまま渡す。
@@ -170,6 +176,9 @@ def costs(mask, glyphs, lam=2.0, phantom=1.5, weight=None, shift=4, slide=0.4,
     slide:   ずらしのコスト（インク 1px を 1px ずらすごと）。小さいほど気軽にずらす。
     fill:    黒い面（mask と同じ形。True が面）。面の中はインクが多いほどコストが下がる。
     fill_gain: 面の中のインク 1px あたりに下げるコスト。大きいほど面を濃く埋める。
+    only:    求める行の番号のリスト（省くと全部）。返す配列の行もその順になる。
+             線の向きや距離は mask 全体で求めるので、前後の行を含めて渡せば、その行だけを
+             全体で求めたときと同じ値になる（aame.session の行の候補で使う）。
     行を終えるコスト term[行, x]（x より右の目標の線をすべて取りこぼす）も返す。
     """
     mask = np.asarray(mask, bool)
@@ -204,16 +213,17 @@ def costs(mask, glyphs, lam=2.0, phantom=1.5, weight=None, shift=4, slide=0.4,
     table = np.ascontiguousarray(np.concatenate(parts, axis=1).reshape(n_forms, -1).T)
     moved = slide * gc.moved_ink
 
-    out = np.empty((rows, width + 1, len(glyphs)), np.float32)
-    for r in range(rows):
+    pick = list(range(rows)) if only is None else list(only)
+    out = np.empty((len(pick), width + 1, len(glyphs)), np.float32)
+    for i, r in enumerate(pick):
         band = feat[:, r * ROW_H:(r + 1) * ROW_H]
         win = sliding_window_view(band, MAX_W, axis=2)          # (面, 18, x, 16)
         win = np.ascontiguousarray(win.transpose(2, 0, 1, 3)).reshape(width + 1, -1)
         # 文字ごとに、ずらした形のうち最も合うものを取る
-        out[r] = np.minimum.reduceat(win @ table + moved, gc.starts, axis=1)
+        out[i] = np.minimum.reduceat(win @ table + moved, gc.starts, axis=1)
 
     ink = target.sum(0).reshape(rows, ROW_H, width).sum(1)       # (行, x) 列ごとの目標の線の量
     term = np.zeros((rows, width + 1))
     term[:, :width] = lam * ink[:, ::-1].cumsum(1)[:, ::-1]
     term[:, :max(width - MAX_W + 1, 0)] = np.inf
-    return out, term
+    return out, term[pick]

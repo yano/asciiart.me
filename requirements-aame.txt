@@ -1,3 +1,6 @@
 scipy
 scikit-image
 opencv-python
+# 線画化などのモデル（ONNX）を動かす。GPU で動かすなら、これの代わりに onnxruntime-gpu（CUDA）か
+# onnxruntime-directml（Windows）を入れる（どれか1つだけ）
+onnxruntime

@@ -1,0 +1,76 @@
+{
+  "note": "画面の「表示フォント」の一覧。builtin 以外のフォントは python -m webapp.get_fonts で static/fonts/ に取ってくる（GitHub には上げない）。",
+  "fonts": [
+    {
+      "id": "mspgothic",
+      "label": "MS Pゴシック",
+      "builtin": true,
+      "note": "当てはめに使う形。文字の表（glyphs.json）で描くので、どの OS でも同じ見た目"
+    },
+    {
+      "id": "saitamaar",
+      "label": "Saitamaar",
+      "file": "fonts/saitamaar/Saitamaar-Regular.woff2",
+      "license": "SIL Open Font License 1.1",
+      "source": "https://github.com/asciiart-development/SaitamaarFont",
+      "note": "幅は MS Pゴシックと同じ",
+      "download": [
+        ["https://raw.githubusercontent.com/asciiart-development/SaitamaarFont/main/fonts/webfonts/Saitamaar-Regular.woff2", "Saitamaar-Regular.woff2"],
+        ["https://raw.githubusercontent.com/asciiart-development/SaitamaarFont/main/OFL.txt", "OFL.txt"]
+      ]
+    },
+    {
+      "id": "textar",
+      "label": "textar",
+      "file": "fonts/textar/textar.woff2",
+      "license": "IPA Font License Agreement v1.0",
+      "source": "https://github.com/AAHub/fontbook（fonts.aahub.org）",
+      "note": "IPA Pゴシックを AA 用に直したもの。幅が少し違う文字がある",
+      "download": [
+        ["https://raw.githubusercontent.com/AAHub/fontbook/master/src/assets/fonts/textar/textar.woff2", "textar.woff2"],
+        ["https://raw.githubusercontent.com/AAHub/fontbook/master/src/assets/fonts/textar/IPA_Font_License_Agreement_v1.0.txt", "IPA_Font_License_Agreement_v1.0.txt"],
+        ["https://raw.githubusercontent.com/AAHub/fontbook/master/src/assets/fonts/textar/README_JA", "README_JA.txt"]
+      ]
+    },
+    {
+      "id": "ume",
+      "label": "梅Pゴシック C4",
+      "file": "fonts/ume/ume-pgc4.woff2",
+      "license": "梅フォントのライセンス（自由に利用・改変・再配布できる）",
+      "source": "https://github.com/AAHub/fontbook（fonts.aahub.org）",
+      "note": "幅は MS Pゴシックと大きく違う",
+      "download": [
+        ["https://raw.githubusercontent.com/AAHub/fontbook/master/src/assets/fonts/ume-pgc4/ume-pgc4.woff2", "ume-pgc4.woff2"],
+        ["https://raw.githubusercontent.com/AAHub/fontbook/master/src/assets/fonts/ume-pgc4/license.html", "license.html"]
+      ]
+    },
+    {
+      "id": "robotojaa",
+      "label": "RobotoJAA",
+      "file": "fonts/robotojaa/RobotoJAA-Regular.woff2",
+      "license": "Apache License 2.0（もとのフォントのライセンスも同梱）",
+      "source": "https://github.com/AAHub/fontbook（fonts.aahub.org）",
+      "note": "幅は MS Pゴシックと大きく違う",
+      "download": [
+        ["https://raw.githubusercontent.com/AAHub/fontbook/master/src/assets/fonts/RobotoJAA/RobotoJAA-Regular.woff2", "RobotoJAA-Regular.woff2"],
+        ["https://raw.githubusercontent.com/AAHub/fontbook/master/src/assets/fonts/RobotoJAA/LICENSE.txt", "LICENSE.txt"],
+        ["https://raw.githubusercontent.com/AAHub/fontbook/master/src/assets/fonts/RobotoJAA/Readme.txt", "Readme.txt"],
+        ["https://raw.githubusercontent.com/AAHub/fontbook/master/src/assets/fonts/RobotoJAA/License/GenShin_README.txt", "License/GenShin_README.txt"],
+        ["https://raw.githubusercontent.com/AAHub/fontbook/master/src/assets/fonts/RobotoJAA/License/migu-README.txt", "License/migu-README.txt"],
+        ["https://raw.githubusercontent.com/AAHub/fontbook/master/src/assets/fonts/RobotoJAA/License/mplus-TESTFLIGHT-059/LICENSE_E", "License/mplus-TESTFLIGHT-059/LICENSE_E.txt"],
+        ["https://raw.githubusercontent.com/AAHub/fontbook/master/src/assets/fonts/RobotoJAA/License/mplus-TESTFLIGHT-059/LICENSE_J", "License/mplus-TESTFLIGHT-059/LICENSE_J.txt"]
+      ]
+    },
+    {
+      "id": "monapo",
+      "label": "monapo",
+      "file": "fonts/monapo/monapo.woff2",
+      "license": "Public Domain（フォントの著作権表示に記載）",
+      "source": "https://github.com/AAHub/fontbook（fonts.aahub.org）",
+      "note": "東雲・Kochi 代替が元。幅が少し違う文字がある",
+      "download": [
+        ["https://raw.githubusercontent.com/AAHub/fontbook/master/src/assets/fonts/monapo/monapo.woff2", "monapo.woff2"]
+      ]
+    }
+  ]
+}

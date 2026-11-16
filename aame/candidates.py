@@ -20,8 +20,9 @@ from pathlib import Path
 
 from PIL import Image
 
-from aame import convert, lineart, regions
+from aame import convert
 from aame.glyphs import ROW_H
+from aame.session import Session
 
 LINEART = "manga_line"
 # 候補: (名前, 説明, 色の境界, 黒い面, 全体の lam)。顔の中の描き込みは、どれも FACE_GAIN 倍。
@@ -70,23 +71,25 @@ CARD = u"""<a class="card" href="{href}">
 </a>"""
 
 
-def make(image, only=None):
-    """候補を作る。[(名前, 説明, 行のリスト)] と、線画の大きさ (高さ, 幅) を返す。"""
-    base = lineart.strength(image, LINEART)
-    size = (base.shape[1], base.shape[0])
-    weight = regions.face_weight(image, size, gain=FACE_GAIN)
-    strengths, fills, out = {None: base}, {}, []
-    for name, note, color, fill, lam in PRESETS:
+def settings(preset):
+    """候補（PRESETS の1つ）を Session.render に渡す設定にする。"""
+    name, note, color, fill, lam = preset
+    return dict(lam=lam, color=color, fill=fill, face_gain=FACE_GAIN)
+
+
+def make(image, only=None, session=None):
+    """候補を作る。[(名前, 説明, 行のリスト)] と、線画の大きさ (高さ, 幅) を返す。
+
+    途中結果（線の強さ、顔など）は session（aame.session.Session）に持たせて使い回す。
+    """
+    s = session or Session(image, LINEART)
+    out = []
+    for preset in PRESETS:
+        name, note = preset[:2]
         if only and name not in only:
             continue
-        if color not in strengths:
-            strengths[color] = lineart.add_color_edges(base, image, color)
-        if fill and fill not in fills:
-            fills[fill] = regions.dark_areas(image, size, fill)
-        mask = lineart.binarize(strengths[color])
-        lines = convert.to_lines(mask, "v2", lam=lam, weight=weight, fill=fills.get(fill))
-        out.append((name, note, lines))
-    return out, base.shape
+        out.append((name, note, s.render(**settings(preset))))
+    return out, s.shape
 
 
 def write(image_path, out_dir, only=None):

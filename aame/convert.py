@@ -29,6 +29,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
+from aame import glyphs as glyph_files
 from aame import match
 from aame.glyphs import GlyphSet
 
@@ -38,17 +39,25 @@ _STATE = {}
 
 
 def _tools():
-    """現行のモジュール（辞書の読み込み、前処理、HTML の前後）を1度だけ用意する。"""
-    if not _STATE:
+    """現行のモジュール（2017 年の辞書の読み込み、前処理、HTML の前後）を1度だけ用意する。"""
+    if "tool" not in _STATE:
         from AA_ChrTool import ChrTool
         from AA_ImPro import ImPro
         tool = ChrTool()
-        _STATE.update(tool=tool, impro=ImPro(), glyphs=GlyphSet.from_chr_list(tool.chrDict))
+        _STATE.update(tool=tool, impro=ImPro(), legacy_glyphs=GlyphSet.from_chr_list(tool.chrDict))
     return _STATE
 
 
 def glyph_set():
-    return _tools()["glyphs"]
+    """当てはめに使う標準の辞書（いまの MS Pゴシックで描き直したもの。aame.make_dict）。"""
+    if "glyphs" not in _STATE:
+        _STATE["glyphs"] = glyph_files.load(glyph_files.DICT_FILE)
+    return _STATE["glyphs"]
+
+
+def legacy_glyph_set():
+    """2017 年の辞書。mode="legacy"（現行の asciiartme.py と同じ出力）でだけ使う。"""
+    return _tools()["legacy_glyphs"]
 
 
 def line_mask(image, method=None, width=2, color=None):
@@ -83,23 +92,34 @@ def weight_map(image, shape, face_gain=1.0, mask_image=None, mask_gain=2.0):
     return maps[0] if len(maps) == 1 else np.maximum(*maps)
 
 
-def fix_double_lines(text):
-    """太い線が2重線（l!）になったものを直す（現行と同じ置き換え。幅は変わらない）。"""
-    return text.replace(u"l!", u"|.").replace(u"j!", u"｝")
+# 太い線が2重線になったものの置き換え（現行と同じ。幅は変わらない）
+DOUBLE_LINES = [(u"l!", u"|."), (u"j!", u"｝")]
 
 
-def finish(lines):
-    """当てはめた並びを仕上げる（v1 用）。"""
-    return [fix_double_lines(s) for s in lines]
+def fix_double_lines(text, glyphs=None):
+    """太い線が2重線（l!）になったものを直す。glyphs（使う文字の辞書）を渡すと、
+    置き換えた先の文字が辞書に無い置き換えはしない（外した文字を出さないため）。"""
+    for a, b in DOUBLE_LINES:
+        if glyphs is None or all(ch in glyphs for ch in b):
+            text = text.replace(a, b)
+    return text
 
 
-def to_lines(mask, mode="v1", **options):
+def finish(lines, glyphs=None):
+    """当てはめた並びを仕上げる（v1 用）。glyphs は fix_double_lines を参照。"""
+    return [fix_double_lines(s, glyphs) for s in lines]
+
+
+def to_lines(mask, mode="v1", glyphs=None, **options):
     """線画から AA の各行を作る。legacy では置き換え前の並びを返す（to_html で仕上げる）。
 
+    glyphs は使う文字の辞書（GlyphSet）。省くと標準の辞書（legacy では 2017 年の辞書）。
     options は v2 のコストの設定（lam など）。
     """
-    lines = match.match(mask, glyph_set(), mode, **options)
-    return lines if mode == "legacy" else finish(lines)
+    if glyphs is None:
+        glyphs = legacy_glyph_set() if mode == "legacy" else glyph_set()
+    lines = match.match(mask, glyphs, mode, **options)
+    return lines if mode == "legacy" else finish(lines, glyphs)
 
 
 def to_html(lines, mode="v1"):
@@ -143,16 +163,11 @@ def main():
     out = a.output or os.path.splitext(a.image)[0] + ".html"
     if a.mode == "v2":
         # v2 には細い線を渡す。--lineart を省いたときは、現行の輪郭を細線化して使う
-        image = Image.open(a.image)
-        mask = line_mask(image, a.lineart or "legacy", 1, a.color_edges)
-        weight = weight_map(image, mask.shape, a.face_gain,
-                            Image.open(a.mask) if a.mask else None, a.mask_gain)
-        fill = None
-        if a.fill:
-            from aame import regions
-            fill = regions.dark_areas(image, (mask.shape[1], mask.shape[0]), a.fill)
-        lines = to_lines(mask, "v2", lam=a.lam, phantom=a.phantom, weight=weight,
-                         shift=a.shift, slide=a.slide, fill=fill, fill_gain=a.fill_gain)
+        from aame.session import Session
+        s = Session(Image.open(a.image), a.lineart or "legacy")
+        lines = s.render(lam=a.lam, color=a.color_edges, fill=a.fill, fill_gain=a.fill_gain,
+                         face_gain=a.face_gain, mask=Image.open(a.mask) if a.mask else None,
+                         mask_gain=a.mask_gain, phantom=a.phantom, shift=a.shift, slide=a.slide)
     else:
         lines = to_lines(line_mask(Image.open(a.image), a.lineart, a.width,
                                    a.color_edges if a.lineart else None), a.mode)
