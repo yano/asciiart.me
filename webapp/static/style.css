@@ -300,3 +300,7 @@ button.small { padding: 2px 8px; font-size: 12px; }
 .gcell .gcount { font-size: 10px; color: var(--muted); line-height: 1; }
 .gcell.off { background: #fde4e1; border-color: #e8a49c; }
 .gcell.off .gimg { opacity: 0.3; }
+
+/* ブラウザの中のエンジンが GPU と CPU のどちらで動いているか */
+.device { font-size: 12px; padding: 2px 8px; border-radius: 10px; background: #e8f5e9; color: #1b5e20; white-space: nowrap; }
+.device.cpu { background: #fff3e0; color: #b04a00; font-weight: bold; }

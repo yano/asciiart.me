@@ -3,7 +3,7 @@
 
     python -m aame.get_models [--out models]
 
-置き場所は RELEASE（タグ models-v1）。中身は sha256 で確かめる。ファイルは aame/export_onnx.py で作ったもの
+置き場所は RELEASE（タグ models-v2。v1 に背景を消すモデル isnet_anime.onnx を足したもの）。中身は sha256 で確かめる。ファイルは aame/export_onnx.py で作ったもの
 （元の重みと、そのライセンスは THIRD_PARTY_NOTICES.txt）。自分で作るなら python -m aame.export_onnx。
 """
 
@@ -13,12 +13,13 @@ import sys
 import urllib.request
 from pathlib import Path
 
-RELEASE = "https://github.com/yano/asciiart.me/releases/download/models-v1/"
+RELEASE = "https://github.com/yano/asciiart.me/releases/download/models-v2/"
 FILES = {
     "manga_line.onnx": "c3d7f329bf270fc6f8e431caee6a871d4c344748cc7108f7490408055ec5ec39",
     "teed.onnx": "0ad443441475c06192309b0649b86ab6e6c1cc88cc6441e08ce7a6afa2c3e78c",
     "face_unet.onnx": "acc4b2c0a246a93bb643c8f626ebf4042e1113657fcc22d6286a79f74e656efe",
-    "THIRD_PARTY_NOTICES.txt": "bc19f57cb4eaaa05726363a7ac565ce28efc637c35675b09802bc6e84a0a5912",
+    "isnet_anime.onnx": "fdf90b7af006d665c6db2f657b5ef0a2f6e13dab010acb6a223fbc18d04db068",
+    "THIRD_PARTY_NOTICES.txt": "25ea506580631777cd9a9d794bf98ce3a23ad7969a3b7d83f9779439e8b6e97b",
 }
 
 

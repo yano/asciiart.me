@@ -6,6 +6,7 @@
   manga_line.onnx  線画化（aame.lineart の manga_line）
   teed.onnx        色の境界（aame.lineart の teed）
   face_unet.onnx   顔の部位（aame.regions.face_parts）
+  isnet_anime.onnx 背景を消す（aame.prep.remove_background。rembg の isnet-anime と同じもの）
 
 前と後の処理は comfyui_controlnet_aux の LineartMangaDetector と TEDDetector の __call__ と同じにしてある
 （大きさを合わせる拡大、64 の倍数への詰め物、uint8 への丸めまで）。torch で動かしたときとの差は
@@ -22,7 +23,9 @@ import cv2
 import numpy as np
 
 MODELS = Path(os.environ.get("AAME_MODELS", Path(__file__).resolve().parent.parent / "models"))
-FILES = {"manga_line": "manga_line.onnx", "teed": "teed.onnx", "face": "face_unet.onnx"}
+FILES = {"manga_line": "manga_line.onnx", "teed": "teed.onnx", "face": "face_unet.onnx", "bg": "isnet_anime.onnx"}
+BG_SIZE = 1024                       # 背景を消すモデルの入力の大きさ（縦横比を変えてこの正方形にする）
+BG_MEAN = (0.485, 0.456, 0.406)
 
 _SESSIONS = {}
 _STATE = {}
@@ -121,3 +124,20 @@ def face_parts(rgb):
     """RGB uint8 (H, W, 3)（H と W は 64 の倍数）→ 部位の番号 (H, W)。aame.regions の並び。"""
     probs = _run("face", (rgb.astype(np.float32) / 255).transpose(2, 0, 1)[None])[0][0]
     return probs.argmax(0)
+
+
+def foreground(rgb):
+    """RGB uint8 (H, W, 3) → 前景の濃さ uint8 (H, W)（255 が前景）。rembg の isnet-anime と同じ前と後の処理:
+    1024×1024 に縮めて（縦横比は変える）最大値で割り、平均を引く。出力は最小〜最大で 0..1 にして、元の大きさに戻す。"""
+    from PIL import Image
+    h, w = rgb.shape[:2]
+    im = np.asarray(Image.fromarray(rgb).resize((BG_SIZE, BG_SIZE), Image.LANCZOS))
+    im = im / max(np.max(im), 1e-6)
+    x = np.stack([im[..., c] - BG_MEAN[c] for c in range(3)])[None].astype(np.float32)
+    pred = _run("bg", x)[0][0, 0]
+    mi, ma = np.min(pred), np.max(pred)
+    if ma - mi < 1e-6:
+        return np.full((h, w), 255, np.uint8)
+    pred = (pred - mi) / (ma - mi)
+    mask = Image.fromarray((pred * 255).astype(np.uint8), "L")
+    return np.asarray(mask.resize((w, h), Image.LANCZOS))

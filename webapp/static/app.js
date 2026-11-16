@@ -237,10 +237,60 @@ function onResult(i, scale, r) {
   progress();
 }
 
+// 初めての線画化の待ち時間の案内（ブラウザの中のエンジンは、モデルを読み込み終えたら出さない）
+const loaded = { models: false, device: null };
+
+function firstLoadNote() {
+  if (engine.kind === "server") return "（初めはモデルの読み込みで 20 秒ほどかかります）";
+  return loaded.models ? "" : "（初めはモデル〈約 180MB〉を読み込みます。2 回目からはブラウザに残したものを使います）";
+}
+
+const MODEL_LABEL = { manga_line: "線画化のモデル", teed: "色の境界のモデル", face: "顔のモデル", bg: "背景を消すモデル" };
+
+// 背景を消すモデルの読み込みの案内（ブラウザの中のエンジンで、まだ読んでいないとき）
+function bgLoadNote() {
+  return engine.kind === "server" || loaded.bg ? "" : "（初めはモデル〈約 88MB〉を読み込みます）";
+}
+
+// ブラウザの中のエンジンの途中経過（モデルの読み込み）
+function onEngineProgress(p) {
+  if (p.kind === "cached") {
+    if (p.cached) loaded.models = true;
+    if (p.bg) loaded.bg = true;
+  } else if (p.kind === "download") {
+    const mb = (v) => (v / 1e6).toFixed(0);
+    setStatus(`${MODEL_LABEL[p.name] || p.name}を読み込んでいます… ${mb(p.received)} / ${mb(p.total)} MB`);
+  } else if (p.kind === "init") {
+    setStatus(`${MODEL_LABEL[p.name] || p.name}を準備しています…`);
+    if (p.name === "manga_line") loaded.models = true;
+    if (p.name === "bg") loaded.bg = true;
+  } else if (p.kind === "device") {
+    const badge = $("device");
+    badge.hidden = false;
+    badge.classList.toggle("cpu", p.device !== "webgpu");
+    badge.textContent = p.device === "webgpu" ? "GPU で処理" : `CPU で処理（遅い${p.threads > 1 ? `、${p.threads} スレッド` : ""}）`;
+    badge.title = p.device === "webgpu"
+      ? "画像の処理に、この PC の GPU を使っています（WebGPU）"
+      : "このブラウザでは GPU（WebGPU）が使えないので、CPU で処理しています。線画化に時間がかかります。"
+        + "Chrome か Edge の新しい版をおすすめします（Linux の Chrome は chrome://flags の「Unsafe WebGPU Support」を有効にすると GPU を使えることがあります）";
+    if (loaded.device === p.device) return;
+    loaded.device = p.device;
+    if (p.device !== "webgpu") {
+      setStatus("このブラウザでは GPU（WebGPU）が使えないので、CPU で動かします。線画化に数分かかります"
+        + "（Chrome か Edge の新しい版をおすすめします）", true);
+    }
+  }
+}
+
+// モデルの読み込みの表示が残っていれば消す（仕事が終わったあと）
+function clearModelStatus() {
+  if (/のモデルを(読み込んで|準備して)います/.test($("status").textContent)) setStatus("");
+}
+
 function progress() {
   if (S.view === "presets") {
     const done = S.presets.filter((p, i) => S.results.has(rkey(i, 1))).length;
-    const first = done === 0 ? "（初めはモデルの読み込みで 20 秒ほどかかります）" : "";
+    const first = done === 0 ? firstLoadNote() : "";
     setStatus(done < S.presets.length ? `候補を作っています… ${done}/${S.presets.length}${first}` : "候補ができました。気に入ったものの「これにする」を押してください");
   } else if (S.view === "scales") {
     const done = S.scales.filter((sc) => S.results.has(rkey(S.base, sc))).length;
@@ -296,6 +346,7 @@ async function openFile(file) {
   if (gen !== S.gen) return;
   S.presets = info.presets;
   if (info.max_side) S.maxSide = info.max_side;
+  S.maxImage = info.max_image || S.maxSide;
   S.orig = {
     id: info.id, name: stem(file.name), file: file.name, width: info.image_width, height: info.image_height,
     size: { width: info.width, height: info.height, rows: info.rows }, analysis: info.analysis, img: null,
@@ -307,7 +358,7 @@ async function openFile(file) {
   if (skip) startImage(origInfo());
   else showPrep();
   try {
-    const img = await loadImage(engine.originalURL(info.id));
+    const img = await loadImage(await engine.originalURL(info.id));
     if (!S.orig || S.orig.id !== info.id) return;
     S.orig.img = img;
     if (S.view === "prep") drawCrop();
@@ -338,7 +389,7 @@ function startImage(info) {
   updateBaseOptions();
   showPresets();
   S.presets.forEach((p, i) => queueResult(i, 1));
-  loadImage(engine.sourceURL(info.id, 1)).then((img) => {
+  Promise.resolve(engine.sourceURL(info.id, 1)).then(loadImage).then((img) => {
     if (gen !== S.gen) return;
     S.image.img = img;
     S.image.srcCanvas = null;
@@ -369,6 +420,7 @@ function editsText() {
 function freshPrep() {
   return {
     crop: null, long: null, delta: 0,       // 設定（long が null なら長辺 800px まで縮める）
+    bg: false,                              // 背景を消す（白くする）
     result: null, key: null,                // 最後に作った前処理の結果と、そのときの設定
     seq: 0, timer: 0,
     show: "image", zoom: "1", u: 0.5, v: 0.4,
@@ -390,7 +442,7 @@ function store(key, value) {
 
 function prepBody() {
   const p = S.prep;
-  return { crop: p.crop, long: p.long, delta: p.delta };
+  return { crop: p.crop, long: p.long, delta: p.delta, bg: p.bg };
 }
 
 function prepKey() {
@@ -426,7 +478,7 @@ function showPrep() {
   if (S.prep.key !== prepKey() || !S.prep.result) schedulePrepare(0);
   else loadPrepPreview();
   const sh = S.orig.shrunk;
-  setStatus((sh ? `画像が大きいので、長辺 ${S.maxSide}px に縮めました（元は ${sh[0]}×${sh[1]} px）。` : "")
+  setStatus((sh ? `画像が大きいので、長辺 ${S.maxImage}px に縮めました（元は ${sh[0]}×${sh[1]} px）。` : "")
     + "切り抜きと大きさを決めて「この設定で候補を作る」を押してください。前処理しないで進むこともできます");
 }
 
@@ -473,7 +525,7 @@ function placeCropBox() {
   const sh = S.orig.shrunk;
   $("cropInfo").textContent = (S.prep.crop ? `${w}×${h} px を切り抜きます（元は ${S.orig.width}×${S.orig.height}）`
     : `元の画像のまま（${S.orig.width}×${S.orig.height} px）`)
-    + (sh ? `。送った画像（${sh[0]}×${sh[1]} px）は長辺 ${S.maxSide}px に縮めてあります` : "");
+    + (sh ? `。送った画像（${sh[0]}×${sh[1]} px）は長辺 ${S.maxImage}px に縮めてあります` : "");
 }
 
 function setupCrop() {
@@ -552,6 +604,7 @@ function updatePrepPanel() {
   const { w, h } = cropPx();
   const size = prepSize();
   const long = p.long ?? Math.max(size.width, size.height);
+  $("prepLong").max = S.maxSide;
   $("prepLong").value = long;
   $("prepLong").nextElementSibling.textContent = `${long}px`;
   const k = Math.max(size.width, size.height) / Math.max(w, h);
@@ -613,12 +666,18 @@ function updatePrepPanel() {
   $("prepDelta").nextElementSibling.textContent = `${p.delta > 0 ? "+" : p.delta < 0 ? "−" : "±"}${Math.abs(p.delta).toFixed(1)}`;
   setSeg("prepShow", p.show);
   setSeg("prepZoom", p.zoom);
+  setSeg("prepBg", p.bg ? "remove" : "keep");
+}
+
+// 前処理しているときの表示
+function prepBusyText() {
+  return S.prep && S.prep.bg ? `背景を消して前処理しています…${bgLoadNote()}` : "前処理しています…";
 }
 
 function schedulePrepare(wait = PREP_WAIT) {
   const p = S.prep;
   clearTimeout(p.timer);
-  $("prepState").textContent = "前処理しています…";
+  $("prepState").textContent = prepBusyText();
   p.timer = setTimeout(() => runPrepare().catch(showError), wait);
 }
 
@@ -630,10 +689,11 @@ async function runPrepare() {
   if (p.result && p.key === key) return p.result;
   const seq = ++p.seq;
   const orig = S.orig;
-  $("prepState").textContent = "前処理しています…";
+  $("prepState").textContent = prepBusyText();
   const keep = S.image && S.image.id !== orig.id ? S.image.id : null;
   const r = await engine.prepare(orig.id, { ...prepBody(), keep });
   if (S.orig !== orig || seq !== p.seq) return null;
+  clearModelStatus();
   p.result = r;
   p.key = key;
   updatePrepPanel();
@@ -657,12 +717,12 @@ async function loadPrepPreview() {
   try {
     if (!c.image) {
       $("prepState").textContent = "前処理した画像を読んでいます…";
-      c.image = toCanvas(await loadImage(engine.sourceURL(id, 1)), r.width, r.height);
+      c.image = toCanvas(await loadImage(await engine.sourceURL(id, 1)), r.width, r.height);
     }
     if (want === "lineart" && !c.lineart) {
-      $("prepState").textContent = "線画を作っています…（初めはモデルの読み込みで 20 秒ほどかかります）";
+      $("prepState").textContent = `線画を作っています…${firstLoadNote()}`;
       drawPrepLoupe();
-      c.lineart = toCanvas(await loadImage(engine.lineartURL(id, null, 1)), r.width, r.height);
+      c.lineart = toCanvas(await loadImage(await engine.lineartURL(id, null, 1)), r.width, r.height);
     }
   } catch (e) {
     showError(new Error("前処理した画像が読めませんでした"));
@@ -794,6 +854,11 @@ function setupPrep() {
     else drawPrepLoupe();
   });
   onSeg("prepZoom", (v) => { S.prep.zoom = v; setSeg("prepZoom", v); drawPrepLoupe(); });
+  onSeg("prepBg", (v) => {
+    S.prep.bg = v === "remove";
+    updatePrepPanel();
+    schedulePrepare(0);
+  });
   $("prepGo").addEventListener("click", prepGo);
   $("prepSkip").addEventListener("click", prepSkip);
   $("prepSkipNext").addEventListener("change", () => store(SKIP_KEY, $("prepSkipNext").checked ? "1" : null));
@@ -1119,7 +1184,7 @@ async function drawUnder() {
   if (!img) {
     const id = S.image.id;
     try {
-      img = await loadImage(engine.lineartURL(id, S.settings.color, S.scale));
+      img = await loadImage(await engine.lineartURL(id, S.settings.color, S.scale));
     } catch (e) {
       return showError(new Error("下絵が読めませんでした"));
     }
@@ -1589,7 +1654,7 @@ async function lineBase() {
   const id = S.image.id, w = S.dims.width, h = S.dims.height;
   let img;
   try {
-    img = await loadImage(engine.lineartURL(id, S.settings.color, S.scale));
+    img = await loadImage(await engine.lineartURL(id, S.settings.color, S.scale));
   } catch (e) {
     showError(new Error("線画が読めませんでした"));
     return null;
@@ -2355,6 +2420,11 @@ async function main() {
   setTool("none");
   syncControls();
   try {
+    engine.setProgressHandler(onEngineProgress);
+    if (engine.kind === "local") {
+      document.querySelector(".localnote").title = "画像は、このブラウザの中だけで処理します。インターネットには送りません"
+        + "（読み込むのはプログラムとモデルだけです）。";
+    }
     const [glyphs, presets] = await Promise.all([engine.glyphs(), engine.presets()]);
     S.table = new GlyphTable(glyphs);
     S.renderer = new Renderer(S.table);
