@@ -87,7 +87,7 @@ torch through that package.
 
 | Model | Weights | Licence |
 |---|---|---|
-| manga_line | `erika.pth` from [ljsabc/MangaLineExtraction_PyTorch](https://github.com/ljsabc/MangaLineExtraction_PyTorch) (release v1) | MIT |
+| manga_line | `erika.pth` from [ljsabc/MangaLineExtraction_PyTorch](https://github.com/ljsabc/MangaLineExtraction_PyTorch) (release v1), with its weights stored as float16 (86 MB instead of 173 MB; computed in float32, about 1 AA row in 15 changes) | MIT |
 | TEED | `checkpoints/BIPED/7/7_model.pth` from [xavysp/TEED](https://github.com/xavysp/TEED) | MIT |
 | Anime face segmentation | `model/UNet.pth` from [siyeong0/Anime-Face-Segmentation](https://github.com/siyeong0/Anime-Face-Segmentation) | MIT |
 | Background removal (`isnet_anime.onnx`) | `isnetis.onnx` from [skytnt/anime-seg](https://huggingface.co/skytnt/anime-seg) ([SkyTNT/anime-segmentation](https://github.com/SkyTNT/anime-segmentation); the same file as rembg's `isnet-anime`), with its weights stored as float16 (88 MB instead of 176 MB; computed in float32, the output is the same within 3e-6) | Apache-2.0 |
@@ -162,7 +162,7 @@ only re-runs the matcher (about 2 s for an 800px image) and a row's alternatives
 The web app also runs with no server at all: the whole engine (`webapp/static/aame/`, a JavaScript
 port of `aame`) runs in a Web Worker, the models run with
 [onnxruntime-web](https://onnxruntime.ai/) on the GPU (WebGPU) and are loaded once from
-[Hugging Face](https://huggingface.co/5atoya/asciiartme-models) (about 180 MB, plus 88 MB for the
+[Hugging Face](https://huggingface.co/5atoya/asciiartme-models) (about 93 MB, plus 88 MB for the
 background remover when it is used; the browser keeps them). Images are not sent anywhere. AA are
 limited to 1024 px on the long side. `webapp/static/engine.js` uses the local server when there is
 one and the in-browser engine otherwise (`?engine=local` or `?engine=server` picks one).
