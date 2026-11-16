@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>asciiart.me</title>
+<link rel="stylesheet" href="style.css">
+<script type="module" src="app.js"></script>
+</head>
+<body>
+<header class="top">
+  <h1>asciiart.me <small>画像を AA に</small></h1>
+  <button id="pick" class="primary">画像を選ぶ</button>
+  <span class="localnote" title="画像は、この PC で動いているこのアプリのサーバーにだけ渡します。インターネットには送りません。">
+    <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 7V5a4 4 0 0 1 8 0v2h.5A1.5 1.5 0 0 1 14 8.5v6a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 14.5v-6A1.5 1.5 0 0 1 3.5 7H4Zm1.5 0h5V5a2.5 2.5 0 0 0-5 0v2Z"/></svg>
+    <span>画像は外部に送られません<br>処理はすべて手元の PC の中</span>
+  </span>
+  <input id="file" type="file" accept="image/*" hidden>
+  <nav class="steps" id="steps" aria-label="手順">
+    <button data-step="prep" disabled>0 前処理</button><button data-step="presets" disabled>1 候補</button><button data-step="scales" disabled>2 大きさ</button><button data-step="edit" disabled>3 仕上げ</button>
+  </nav>
+  <label class="fontsel" title="AA を表示するフォント。書き出す PNG もこのフォントで描きます">表示フォント <select id="font"></select></label>
+  <button id="dictBtn" class="ghost small dictbtn">使う文字</button>
+  <span id="status" class="status" role="status"></span>
+  <a class="github" href="https://github.com/yano/asciiart.me" target="_blank" rel="noopener" title="GitHub のリポジトリ" aria-label="GitHub のリポジトリ">
+    <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.45-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8Z"/></svg>
+  </a>
+</header>
+
+<main>
+  <!-- 画像を入れる前 -->
+  <section id="welcome" class="welcome">
+    <div class="drop" id="drop">
+      <p class="big">ここに画像をドロップ</p>
+      <p>または <button id="pick2" class="link">ファイルを選ぶ</button>、Ctrl+V で貼り付け</p>
+      <p class="small">アニメ・イラスト向けです。切り抜きと大きさを決め（前処理）、設定の違う AA の候補から気に入ったものを選び、大きさを選んで、仕上げます。</p>
+      <p class="small">画像はインターネットに送られません。処理はすべて手元の PC の中で行います。大きな画像は長辺 2048px に縮めて使います。</p>
+    </div>
+  </section>
+
+  <!-- 0. 前処理 -->
+  <section id="prepView" class="prepview" hidden>
+    <div class="pickbar">
+      <b>0. 前処理</b>
+      <span class="lead">切り抜きと AA の大きさを決め、線の太さを確かめます。</span>
+      <span class="spacer"></span>
+      <label class="check" title="次に画像を入れたときは、すぐに候補を作ります（上の「0 前処理」でいつでも戻れます）"><input id="prepSkipNext" type="checkbox"> 次から飛ばす</label>
+      <button id="prepSkip" class="ghost">前処理をしないで進む</button>
+      <button id="prepGo" class="primary">この設定で候補を作る</button>
+    </div>
+    <div class="prepbody">
+      <div class="cropwrap" id="cropWrap">
+        <div class="cropstage" id="cropStage">
+          <canvas id="cropCanvas"></canvas>
+          <div class="cropshade"></div><div class="cropshade"></div><div class="cropshade"></div><div class="cropshade"></div>
+          <div id="cropBox" class="cropbox"><span id="cropLabel" class="croplabel"></span></div>
+          <div id="cropView" class="cropview" hidden></div>
+        </div>
+      </div>
+      <div class="preploupe">
+        <div class="loupebar">
+          <b>等倍で確かめる</b>
+          <span class="seg" id="prepShow" role="radiogroup" aria-label="表示するもの"><button data-v="image">画像</button><button data-v="lineart">線画</button></span>
+          <span class="seg" id="prepZoom" role="radiogroup" aria-label="拡大"><button data-v="1">等倍</button><button data-v="2">2倍</button></span>
+          <span id="prepState" class="muted"></span>
+        </div>
+        <div class="lwrap" id="prepWrap"><canvas id="prepCanvas" class="lcanvas"></canvas><div id="prepWait" class="lwait" hidden></div></div>
+      </div>
+      <aside class="panel preppanel">
+        <section>
+          <h2>切り抜き</h2>
+          <p class="note">左の画像をドラッグすると、その範囲を切り抜きます。枠の中をドラッグすると枠が動きます。</p>
+          <div class="row buttons"><button id="cropReset" class="ghost">切り抜かない</button><span id="cropInfo" class="muted"></span></div>
+        </section>
+        <section>
+          <h2>大きさ</h2>
+          <div class="row">
+            <label class="label" for="prepLong">AA の長辺</label>
+            <input id="prepLong" type="range" min="300" max="2048" step="4">
+            <output for="prepLong"></output>
+          </div>
+          <p class="note" id="sizeInfo"></p>
+          <div class="row buttons"><button id="longAuto" class="ghost">いつもの大きさ（長辺 800px まで）</button></div>
+        </section>
+        <section>
+          <h2>線の太さ</h2>
+          <div id="strokeInfo" class="strokeinfo"></div>
+          <div class="row">
+            <label class="label" for="prepDelta">太さを変える</label>
+            <input id="prepDelta" type="range" min="-3" max="3" step="0.5" value="0">
+            <output for="prepDelta"></output>
+          </div>
+          <div class="row buttons"><button id="deltaAuto" class="ghost">おすすめにする</button><button id="deltaZero" class="ghost">変えない</button></div>
+          <p class="note">太すぎる線は AA で二重線になりやすく、細すぎる線は拾えないことがあります。太さは、明るい所・暗い所を広げて変えます（新しい線は描きません）。「線画」で、当てはめに使う線を確かめられます。</p>
+        </section>
+      </aside>
+    </div>
+  </section>
+
+  <!-- 1. 候補を選ぶ / 2. 大きさを選ぶ -->
+  <section id="pickView" class="pickview" hidden>
+    <div class="pickbar">
+      <b id="pickTitle"></b>
+      <span id="pickLead" class="lead"></span>
+      <span class="spacer"></span>
+      <span id="scaleButtons" class="row buttons" hidden>
+        <button id="smaller" class="ghost">もっと小さく</button><button id="larger" class="ghost">もっと大きく</button>
+      </span>
+    </div>
+    <div id="compare"></div>
+    <p class="keys">図の上にマウス: その所を右に等倍で表示 ／ 図を押す: 位置を止める（もう一度押すと解除）／ 右の表示をつかんで動かす ／ ← →: 候補を切り替え ／ Enter: これにする</p>
+  </section>
+
+  <!-- 3. 仕上げ -->
+  <section id="edit" class="edit" hidden>
+    <div class="viewer">
+      <div class="viewbar">
+        <label>もとの候補 <select id="base"></select></label>
+        <span id="scaleInfo" class="muted"></span>
+        <span class="sep"></span>
+        <span class="seg" id="under" role="radiogroup" aria-label="下絵">
+          <button data-v="none">下絵なし</button><button data-v="source">元の画像</button><button data-v="lineart">線画</button>
+        </span>
+        <input id="underOpacity" type="range" min="0.05" max="1" step="0.05" value="0.15" title="下絵の濃さ">
+        <span class="sep"></span>
+        <span class="seg" id="zoom" role="radiogroup" aria-label="表示の大きさ">
+          <button data-v="fit">全体</button><button data-v="1">等倍</button><button data-v="2">2倍</button>
+        </span>
+        <span class="sep"></span>
+        <button id="prev" class="ghost" disabled title="押している間、作り直す前の AA を表示します">前の結果</button>
+      </div>
+      <div class="stage-wrap" id="stageWrap">
+        <div class="stage" id="stage">
+          <canvas id="underCanvas" class="layer"></canvas>
+          <canvas id="lineCanvas" class="layer lines" hidden></canvas>
+          <canvas id="aaCanvas" class="layer"></canvas>
+          <div id="marks" class="marks"></div>
+          <div id="rowHover" class="rowband hover" hidden></div>
+          <div id="rowPick" class="rowband pick" hidden></div>
+          <canvas id="paintCanvas" class="layer paint"></canvas>
+          <canvas id="strokeCanvas" class="layer stroke"></canvas>
+          <div id="brush" class="brush" hidden></div>
+        </div>
+        <div id="busy" class="busy" hidden>作り直しています…</div>
+      </div>
+      <details class="textbox" id="textBox">
+        <summary>テキスト（ここで直接直せます）</summary>
+        <div class="textinfo" id="textInfo"></div>
+        <textarea id="text" spellcheck="false" autocomplete="off"></textarea>
+      </details>
+    </div>
+
+    <aside class="panel">
+      <section>
+        <h2>調整</h2>
+        <div class="row">
+          <span class="label">方式</span>
+          <span class="seg" id="mode">
+            <button data-v="v2">標準</button><button data-v="v1">高密度（太い線）</button>
+          </span>
+        </div>
+        <div class="row v2only">
+          <label class="label" for="lam">描き込み</label>
+          <input id="lam" type="range" min="1" max="3.5" step="0.1">
+          <output for="lam"></output>
+        </div>
+        <div class="row v2only">
+          <label class="label" for="face_gain">顔の描き込み</label>
+          <input id="face_gain" type="range" min="1" max="4" step="0.25">
+          <output for="face_gain"></output>
+        </div>
+        <div class="row">
+          <span class="label">色の境界</span>
+          <span class="seg" id="color">
+            <button data-v="">なし</button><button data-v="face">顔</button><button data-v="all">全体</button>
+          </span>
+        </div>
+        <div class="row v2only">
+          <span class="label">黒い面</span>
+          <span class="seg" id="fill">
+            <button data-v="">なし</button><button data-v="face">顔</button><button data-v="all">全体</button>
+          </span>
+        </div>
+        <div class="row v2only fillonly">
+          <label class="label" for="fill_gain">面の濃さ</label>
+          <input id="fill_gain" type="range" min="0.2" max="1.2" step="0.05">
+          <output for="fill_gain"></output>
+        </div>
+        <p class="note" id="modeNote" hidden>高密度は線を太らせて当てはめます。描き込み・顔・黒い面・塗りは使いません。</p>
+        <button id="reset" class="ghost">候補の設定に戻す</button>
+      </section>
+
+      <section>
+        <h2>手直し</h2>
+        <div class="tools" id="tool" role="radiogroup" aria-label="手直しの道具">
+          <div class="toolrow"><span class="tlabel"></span><span class="seg"><button data-v="none">見るだけ</button><button data-v="row">行を直す</button></span></div>
+          <div class="toolrow"><span class="tlabel">描き込み</span><span class="seg"><button data-v="more" class="v2tool">増やす</button><button data-v="less" class="v2tool">減らす</button></span></div>
+          <div class="toolrow"><span class="tlabel">線画</span><span class="seg"><button data-v="erase">線を消す</button><button data-v="draw">線を描き足す</button></span></div>
+        </div>
+
+        <div id="rowPanel" hidden>
+          <p class="note" id="rowHint">AA の行を押すと、その行の別の候補が出ます。候補にマウスを置くと AA の中で差し替えて見せます。押して選び、「確定」で差し替えます（↑↓ で選ぶ、Enter で確定、Esc でやめる）。</p>
+          <div id="rowHead" class="rowhead" hidden>
+            <b id="rowTitle"></b>
+            <span class="spacer"></span>
+            <button id="rowApply" class="primary" disabled>確定</button>
+            <button id="rowCancel" class="ghost">やめる</button>
+          </div>
+          <div id="rowList" class="rowlist"></div>
+        </div>
+
+        <p id="linePanel" class="note" hidden>AA の下に、当てはめに使う線（赤）を出しています。<span id="lineWhat"></span></p>
+        <p id="paintPanel" class="note" hidden>AA の上を塗ると、その所の描き込みが<span id="paintWhat">増え</span>、すぐに作り直します。同じ所を塗り重ねるほど強く効きます（4 回まで）。ブラシの大きさは AA の 1 行ぶん弱です。</p>
+
+        <div class="row buttons undorow">
+          <button id="undo" class="ghost" title="Ctrl+Z" disabled>1つ戻す</button>
+          <button id="redo" class="ghost" title="Ctrl+Y" disabled>やり直す</button>
+        </div>
+        <div class="row buttons">
+          <button id="clearAll" class="ghost" disabled>手直しを全て取り消す</button>
+        </div>
+        <p class="note" id="fixedNote"></p>
+      </section>
+
+      <section>
+        <h2>書き出す</h2>
+        <div class="row buttons">
+          <button id="copy" class="primary">テキストをコピー</button>
+        </div>
+        <div class="row buttons">
+          <button id="saveTxt">.txt</button>
+          <button id="savePng">PNG</button>
+        </div>
+        <div class="row buttons">
+          <button id="saveHtml" title="MS Pゴシックで表示する .html（ブラウザのズームが 100% のときに、AA の文字の位置が合います）">.html</button>
+          <button id="saveHtmlFont">.html（フォント埋め込み）</button>
+        </div>
+        <p class="note" id="htmlNote"></p>
+        <p class="note" id="info"></p>
+      </section>
+    </aside>
+  </section>
+</main>
+
+<!-- 使う文字（辞書から外す文字を選ぶ） -->
+<dialog id="dictDialog" class="dict" aria-labelledby="dictTitle">
+  <form method="dialog" class="dictform">
+    <div class="dicthead">
+      <b id="dictTitle">使う文字</b>
+      <span id="dictCount" class="muted"></span>
+      <span class="spacer"></span>
+      <button value="cancel" class="ghost">閉じる</button>
+    </div>
+    <p class="note">文字を押すと、使う・使わないが切り替わります。外した文字（薄い赤）は AA に使いません（候補、大きさ、仕上げ、行の候補のすべて）。線の上に丸い文字が当たるときなどに外してください。選んだ文字はこのブラウザで覚えます。</p>
+    <div id="dictBody" class="dictbody"></div>
+    <div class="dictfoot">
+      <button type="button" id="dictAll" class="ghost">すべて使う</button>
+      <span class="spacer"></span>
+      <button value="cancel" class="ghost">やめる</button>
+      <button value="ok" id="dictOk" class="primary">この文字で作り直す</button>
+    </div>
+  </form>
+</dialog>
+</body>
+</html>

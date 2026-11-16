@@ -251,6 +251,21 @@ def match_cost(cost, term, glyphs):
     return ["".join(glyphs.chars[g] for g in row) for row in picked], total
 
 
+def v1_costs(mask, glyphs):
+    """v1 のコスト c[行, x, 文字] と、行を終えるコスト term[行, x]（match_cost に渡せる形）。
+
+    match_cost(*v1_costs(mask, glyphs), glyphs) は match(mask, glyphs, "v1") と同じ並びになる。
+    """
+    mask = np.asarray(mask, bool)
+    rows, width = mask.shape[0] // ROW_H, mask.shape[1]
+    band = mask[:rows * ROW_H].reshape(rows, ROW_H, width)[:, TOP:]
+    rest = np.concatenate([band.sum(1)[:, ::-1].cumsum(1)[:, ::-1],
+                           np.zeros((rows, 1), np.int64)], axis=1)
+    term = _cost(rest)
+    term[:, :max(width - MAX_W + 1, 0)] = np.inf
+    return _cost(mismatch_counts(mask, glyphs)), term
+
+
 def match(mask, glyphs, mode="v1", **options):
     """線画（線が True）に文字を当てはめ、行ごとの文字列のリストを返す。
 

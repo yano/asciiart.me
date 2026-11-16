@@ -90,3 +90,9 @@ ENV/
 
 # 評価や実験の出力
 out/
+
+# 画面の表示フォント（python -m webapp.get_fonts で取ってくる）
+webapp/static/fonts/
+
+# ONNX にしたモデル（python -m aame.export_onnx で作る。大きいので上げない）
+models/
