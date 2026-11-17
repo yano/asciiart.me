@@ -24,6 +24,10 @@
 - `node aaeval/webapp_test/html_zoom.mjs <出力> <AA の html> [拡大率...]` … 書き出した .html（MS Pゴシック）を拡大率を変えて開き、
   行の右端が辞書の幅どおりかを測る（100% 以外ではずれる。2026-11-15 の記録）
 - `node aaeval/webapp_test/font_offset.mjs <出力>` … 表示フォントで canvas に描いた AA と、ブラウザが文字として表示したものを撮る（縦位置の確認。比べ方は 2026-11-15 の記録では 5 フォントともずれ 0px）
+- `node aaeval/webapp_test/i18n_test.mjs <出力> <画像> [--base URL]` … 英語の画面（?lang=en。ブラウザの中のエンジン）で、前処理 → 候補 →
+  大きさ → 仕上げ → 行の候補 → 塗る・線画 → 使う文字まで進め、見えている文字と title に日本語が残っていないかを確かめる。
+  途中で日本語に切り替えて英語に戻したあとも見る。各画面の写真を撮る（既定は build_static の serve.py、ポート 8765）
+- `node aaeval/js/i18n_check.mjs` … 画面の英語（webapp/static/i18n_en.js）に足りない文・使っていない文が無いか（ブラウザは使わない）
 
 ui_test.mjs と ui_test2.mjs は、候補が6つ・大きさを選ぶ手順が無かったころの画面用（いまの画面では動かない）。
 ui_test3.mjs は 0 前処理を「前処理をしないで進む」で飛ばす。

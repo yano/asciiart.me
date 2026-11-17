@@ -3,6 +3,8 @@
 // Windows のブラウザが MS Pゴシック 16px で表示したものと同じ画素になる。
 // 表示フォントを切り替えたときは、その Web フォントで描く（Renderer）。
 
+import { t } from "./i18n.js";
+
 export const ROW_H = 18;
 
 // 辞書に無い文字（手で打った文字など）を描くフォント。幅もこのフォントで測る
@@ -207,7 +209,9 @@ function escapeHtml(s) {
 export function toHtml(lines, font = null) {
   const body = lines.map((s) => escapeHtml(s) + "<br>\r\n").join("") + FOOTER;
   if (!font) return HEADER + body;
-  const note = `文字の形: ${font.label}（${font.license}${font.source ? "、" + font.source : ""}）。AA に使う文字だけを埋め込んでいます`;
+  const note = font.source
+    ? t("文字の形: {label}（{license}、{source}）。AA に使う文字だけを埋め込んでいます", font)
+    : t("文字の形: {label}（{license}）。AA に使う文字だけを埋め込んでいます", font);
   return '<!DOCTYPE html>\r\n<html>\r\n<head>\r\n<meta http-equiv="Content-Type" content="text/html">\r\n'
     + '<meta charset="UTF-8">\r\n'
     + `<!-- ${escapeHtml(note).replace(/--/g, "‐‐")} -->\r\n`

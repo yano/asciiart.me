@@ -6,6 +6,7 @@
 import * as engine from "./engine.js";
 import { GlyphTable, Renderer, ROW_H, toText, toHtml } from "./aa.js";
 import { Compare } from "./compare.js";
+import { t, tr, list, lang, setLang } from "./i18n.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -89,19 +90,21 @@ const S = {
 };
 
 const rkey = (i, scale) => `${i}@${scale.toFixed(2)}`;
-const secs = (ms) => `${(ms / 1000).toFixed(1)} 秒`;
+const secs = (ms) => t("{s} 秒", { s: (ms / 1000).toFixed(1) });
 
 // ---------- 状態の表示 ----------
 
-function setStatus(text, error = false) {
+// kind: "model" はモデルの読み込みの表示（仕事が終わったら clearModelStatus で消す）
+function setStatus(text, error = false, kind = null) {
   const el = $("status");
   el.textContent = text || "";
   el.classList.toggle("error", error);
+  S.statusKind = text ? kind : null;
 }
 
 function showError(e) {
   console.error(e);
-  setStatus("エラー: " + (e && e.message ? e.message : e), true);
+  setStatus(t("エラー: {msg}", { msg: tr(e && e.message ? e.message : String(e)) }), true);
 }
 
 function show(view) {
@@ -128,7 +131,7 @@ const pending = new Set();
 function requestEdit() {
   if (!S.image || !S.lines) return;
   jobs.edit = true;
-  $("busy").textContent = "作り直しています…";
+  $("busy").textContent = t("作り直しています…");
   $("busy").hidden = false;
   pump();
 }
@@ -197,7 +200,7 @@ async function runEdit() {
   S.ms = r.ms;
   cancelRow();
   drawEditor();
-  setStatus(`作り直しました（${secs(r.ms)}）`);
+  setStatus(t("作り直しました（{time}）", { time: secs(r.ms) }));
 }
 
 // 候補 i を大きさ scale で作る仕事を足す（front なら先頭に）
@@ -241,15 +244,16 @@ function onResult(i, scale, r) {
 const loaded = { models: false, device: null };
 
 function firstLoadNote() {
-  if (engine.kind === "server") return "（初めはモデルの読み込みで 20 秒ほどかかります）";
-  return loaded.models ? "" : "（初めはモデル〈約 93MB〉を読み込みます。2 回目からはブラウザに残したものを使います）";
+  if (engine.kind === "server") return t("（初めはモデルの読み込みで 20 秒ほどかかります）");
+  return loaded.models ? "" : t("（初めはモデル〈約 93MB〉を読み込みます。2 回目からはブラウザに残したものを使います）");
 }
 
 const MODEL_LABEL = { manga_line: "線画化のモデル", teed: "色の境界のモデル", face: "顔のモデル", bg: "背景を消すモデル" };
+const modelLabel = (name) => (MODEL_LABEL[name] ? t(MODEL_LABEL[name]) : name);
 
 // 背景を消すモデルの読み込みの案内（ブラウザの中のエンジンで、まだ読んでいないとき）
 function bgLoadNote() {
-  return engine.kind === "server" || loaded.bg ? "" : "（初めはモデル〈約 88MB〉を読み込みます）";
+  return engine.kind === "server" || loaded.bg ? "" : t("（初めはモデル〈約 88MB〉を読み込みます）");
 }
 
 // ブラウザの中のエンジンの途中経過（モデルの読み込み）
@@ -259,42 +263,51 @@ function onEngineProgress(p) {
     if (p.bg) loaded.bg = true;
   } else if (p.kind === "download") {
     const mb = (v) => (v / 1e6).toFixed(0);
-    setStatus(`${MODEL_LABEL[p.name] || p.name}を読み込んでいます… ${mb(p.received)} / ${mb(p.total)} MB`);
+    setStatus(t("{model}を読み込んでいます… {got} / {total} MB", { model: modelLabel(p.name), got: mb(p.received), total: mb(p.total) }), false, "model");
   } else if (p.kind === "init") {
-    setStatus(`${MODEL_LABEL[p.name] || p.name}を準備しています…`);
+    setStatus(t("{model}を準備しています…", { model: modelLabel(p.name) }), false, "model");
     if (p.name === "manga_line") loaded.models = true;
     if (p.name === "bg") loaded.bg = true;
   } else if (p.kind === "device") {
-    const badge = $("device");
-    badge.hidden = false;
-    badge.classList.toggle("cpu", p.device !== "webgpu");
-    badge.textContent = p.device === "webgpu" ? "GPU で処理" : `CPU で処理（遅い${p.threads > 1 ? `、${p.threads} スレッド` : ""}）`;
-    badge.title = p.device === "webgpu"
-      ? "画像の処理に、この PC の GPU を使っています（WebGPU）"
-      : "このブラウザでは GPU（WebGPU）が使えないので、CPU で処理しています。線画化に時間がかかります。"
-        + "Chrome か Edge の新しい版をおすすめします（Linux の Chrome は chrome://flags の「Unsafe WebGPU Support」を有効にすると GPU を使えることがあります）";
+    loaded.deviceInfo = p;
+    drawDevice();
     if (loaded.device === p.device) return;
     loaded.device = p.device;
     if (p.device !== "webgpu") {
-      setStatus("このブラウザでは GPU（WebGPU）が使えないので、CPU で動かします。線画化に数分かかります"
-        + "（Chrome か Edge の新しい版をおすすめします）", true);
+      setStatus(t("このブラウザでは GPU（WebGPU）が使えないので、CPU で動かします。線画化に数分かかります（Chrome か Edge の新しい版をおすすめします）"), true);
     }
   }
 }
 
+// 上の帯の「GPU で処理」「CPU で処理」
+function drawDevice() {
+  const p = loaded.deviceInfo;
+  if (!p) return;
+  const badge = $("device");
+  badge.hidden = false;
+  badge.classList.toggle("cpu", p.device !== "webgpu");
+  badge.textContent = p.device === "webgpu" ? t("GPU で処理")
+    : p.threads > 1 ? t("CPU で処理（遅い、{n} スレッド）", { n: p.threads }) : t("CPU で処理（遅い）");
+  badge.title = p.device === "webgpu"
+    ? t("画像の処理に、この PC の GPU を使っています（WebGPU）")
+    : t("このブラウザでは GPU（WebGPU）が使えないので、CPU で処理しています。線画化に時間がかかります。Chrome か Edge の新しい版をおすすめします（Linux の Chrome は chrome://flags の「Unsafe WebGPU Support」を有効にすると GPU を使えることがあります）");
+}
+
 // モデルの読み込みの表示が残っていれば消す（仕事が終わったあと）
 function clearModelStatus() {
-  if (/のモデルを(読み込んで|準備して)います/.test($("status").textContent)) setStatus("");
+  if (S.statusKind === "model") setStatus("");
 }
 
 function progress() {
   if (S.view === "presets") {
     const done = S.presets.filter((p, i) => S.results.has(rkey(i, 1))).length;
     const first = done === 0 ? firstLoadNote() : "";
-    setStatus(done < S.presets.length ? `候補を作っています… ${done}/${S.presets.length}${first}` : "候補ができました。気に入ったものの「これにする」を押してください");
+    setStatus(done < S.presets.length ? t("候補を作っています… {done}/{total}{note}", { done, total: S.presets.length, note: first })
+      : t("候補ができました。気に入ったものの「これにする」を押してください"));
   } else if (S.view === "scales") {
     const done = S.scales.filter((sc) => S.results.has(rkey(S.base, sc))).length;
-    setStatus(done < S.scales.length ? `大きさを変えて作っています… ${done}/${S.scales.length}` : "できました。気に入った大きさの「これにする」を押してください");
+    setStatus(done < S.scales.length ? t("大きさを変えて作っています… {done}/{total}", { done, total: S.scales.length })
+      : t("できました。気に入った大きさの「これにする」を押してください"));
   }
 }
 
@@ -323,7 +336,7 @@ function stopJobs() {
 async function openFile(file) {
   if (!file) return;
   if (file.type && !file.type.startsWith("image/")) {
-    setStatus("画像のファイルを入れてください", true);
+    setStatus(t("画像のファイルを入れてください"), true);
     return;
   }
   const gen = ++S.gen;
@@ -335,7 +348,7 @@ async function openFile(file) {
   });
   S.underCache.clear();
   resetLines();
-  setStatus("画像を読んでいます…");
+  setStatus(t("画像を読んでいます…"));
   let info;
   try {
     info = await engine.open(file);
@@ -363,7 +376,7 @@ async function openFile(file) {
     S.orig.img = img;
     if (S.view === "prep") drawCrop();
   } catch (e) {
-    if (S.orig && S.orig.id === info.id) showError(new Error("元の画像が読めませんでした"));
+    if (S.orig && S.orig.id === info.id) showError(new Error(t("元の画像が読めませんでした")));
   }
 }
 
@@ -395,22 +408,22 @@ function startImage(info) {
     S.image.srcCanvas = null;
     if (S.view === "presets" || S.view === "scales") compare.update("src", { canvas: sourceCanvas() });
     if (S.view === "edit") drawUnder();
-  }).catch(() => { if (gen === S.gen) showError(new Error("元の画像が読めませんでした")); });
+  }).catch(() => { if (gen === S.gen) showError(new Error(t("元の画像が読めませんでした"))); });
 }
 
 // 仕上げの途中なら、手直し（直した行と塗り）が消えることを確かめる
 function confirmRestart() {
   const what = editsText();
-  return !what || confirm(`手直し（${what}）を外して、候補を作り直します。よろしいですか？`);
+  return !what || confirm(t("手直し（{what}）を外して、候補を作り直します。よろしいですか？", { what }));
 }
 
 // いまの手直しの中身（無ければ ""）
 function editsText() {
   const parts = [];
-  if (S.fixed.size) parts.push(`手で直した行 ${S.fixed.size} 行`);
-  if (S.hasPaint) parts.push("塗った所");
-  if (S.lineStrokes.length) parts.push("線画の直し");
-  return parts.join("と");
+  if (S.fixed.size) parts.push(t("手で直した行 {n} 行", { n: S.fixed.size }));
+  if (S.hasPaint) parts.push(t("塗った所"));
+  if (S.lineStrokes.length) parts.push(t("線画の直し"));
+  return list(parts);
 }
 
 // ---------- 0. 前処理 ----------
@@ -478,8 +491,8 @@ function showPrep() {
   if (S.prep.key !== prepKey() || !S.prep.result) schedulePrepare(0);
   else loadPrepPreview();
   const sh = S.orig.shrunk;
-  setStatus((sh ? `画像が大きいので、長辺 ${S.maxImage}px に縮めました（元は ${sh[0]}×${sh[1]} px）。` : "")
-    + "切り抜きと大きさを決めて「この設定で候補を作る」を押してください。前処理しないで進むこともできます");
+  setStatus((sh ? t("画像が大きいので、長辺 {max}px に縮めました（元は {w}×{h} px）。", { max: S.maxImage, w: sh[0], h: sh[1] }) : "")
+    + t("切り抜きと大きさを決めて「この設定で候補を作る」を押してください。前処理しないで進むこともできます"));
 }
 
 // 送った画像を左の枠に収めて描く
@@ -513,19 +526,20 @@ function placeCropBox() {
   const fit = S.prep.fit;
   if (!fit) return;
   const c = S.prep.crop || [0, 0, 1, 1];
-  const [l, t, r, b] = [c[0] * fit.w, c[1] * fit.h, c[2] * fit.w, c[3] * fit.h];
-  Object.assign($("cropBox").style, { left: `${l}px`, top: `${t}px`, width: `${r - l}px`, height: `${b - t}px` });
+  const [l, tp, r, b] = [c[0] * fit.w, c[1] * fit.h, c[2] * fit.w, c[3] * fit.h];
+  Object.assign($("cropBox").style, { left: `${l}px`, top: `${tp}px`, width: `${r - l}px`, height: `${b - tp}px` });
   // 切り抜く範囲の外を暗くする（上・下・左・右の4枚）
   const shades = $("cropStage").querySelectorAll(".cropshade");
-  const parts = [[0, 0, fit.w, t], [0, b, fit.w, fit.h - b], [0, t, l, b - t], [r, t, fit.w - r, b - t]];
+  const parts = [[0, 0, fit.w, tp], [0, b, fit.w, fit.h - b], [0, tp, l, b - tp], [r, tp, fit.w - r, b - tp]];
   parts.forEach(([x, y, w, h], i) => Object.assign(shades[i].style, { left: `${x}px`, top: `${y}px`, width: `${Math.max(0, w)}px`, height: `${Math.max(0, h)}px` }));
   $("cropStage").classList.toggle("full", !S.prep.crop);
   const { w, h } = cropPx();
   $("cropLabel").textContent = `${w}×${h}`;
   const sh = S.orig.shrunk;
-  $("cropInfo").textContent = (S.prep.crop ? `${w}×${h} px を切り抜きます（元は ${S.orig.width}×${S.orig.height}）`
-    : `元の画像のまま（${S.orig.width}×${S.orig.height} px）`)
-    + (sh ? `。送った画像（${sh[0]}×${sh[1]} px）は長辺 ${S.maxImage}px に縮めてあります` : "");
+  const W = S.orig.width, H = S.orig.height;
+  $("cropInfo").textContent = (S.prep.crop ? t("{w}×{h} px を切り抜きます（元は {W}×{H}）", { w, h, W, H })
+    : t("元の画像のまま（{W}×{H} px）", { W, H }))
+    + (sh ? t("。送った画像（{w}×{h} px）は長辺 {max}px に縮めてあります", { w: sh[0], h: sh[1], max: S.maxImage }) : "");
 }
 
 function setupCrop() {
@@ -594,7 +608,8 @@ function resetCrop() {
 }
 
 function verdictText(a) {
-  return { good: "ちょうどよい", thick: "太い", thin: "細い", none: "線が見つかりません" }[a.verdict] || "";
+  const v = { good: "ちょうどよい", thick: "太い", thin: "細い", none: "線が見つかりません" }[a.verdict];
+  return v ? t(v) : "";
 }
 
 function updatePrepPanel() {
@@ -608,8 +623,10 @@ function updatePrepPanel() {
   $("prepLong").value = long;
   $("prepLong").nextElementSibling.textContent = `${long}px`;
   const k = Math.max(size.width, size.height) / Math.max(w, h);
-  $("sizeInfo").textContent = `AA: ${size.width}×${size.height} px、${Math.floor(size.height / ROW_H)} 行。1 行は全角で約 ${Math.round(size.width / 16)} 文字ぶん。`
-    + (Math.abs(k - 1) < 0.005 ? "画像の大きさのまま。" : `画像を ×${k.toFixed(2)} に${k < 1 ? "縮め" : "拡大し"}ます。`);
+  $("sizeInfo").textContent = t("AA: {w}×{h} px、{rows} 行。1 行は全角で約 {n} 文字ぶん。",
+    { w: size.width, h: size.height, rows: Math.floor(size.height / ROW_H), n: Math.round(size.width / 16) })
+    + (Math.abs(k - 1) < 0.005 ? t("画像の大きさのまま。")
+      : t(k < 1 ? "画像を ×{k} に縮めます。" : "画像を ×{k} に拡大します。", { k: k.toFixed(2) }));
   $("longAuto").disabled = p.long == null;
   // 線の太さ（設定を変えたばかりのときは、前に測った値を「測り直しています」と出す）
   const fresh = !!p.result && p.key === prepKey();
@@ -619,25 +636,25 @@ function updatePrepPanel() {
   const changed = fresh && p.result.after && p.delta;
   if (before) {
     const head = document.createElement("div");
-    head.append(p.delta ? "元の線の太さ: " : "線の太さ: ");
+    head.append(p.delta ? t("元の線の太さ: ") : t("線の太さ: "));
     if (before.width != null) {
       const b = document.createElement("b");
-      b.textContent = `約 ${before.width.toFixed(1)}px`;
+      b.textContent = t("約 {w}px", { w: before.width.toFixed(1) });
       head.append(b);
     }
     const badge = document.createElement("span");
     badge.className = `badge ${before.verdict}`;
     badge.textContent = verdictText(before);
     head.append(badge);
-    if (!fresh && p.result) head.append(" （測り直しています…）");
+    if (!fresh && p.result) head.append(t(" （測り直しています…）"));
     info.append(head);
     const range = document.createElement("div");
     range.className = "muted";
-    range.textContent = `目安 ${before.good[0]}〜${before.good[1]}px（AA の大きさで）`;
+    range.textContent = t("目安 {a}〜{b}px（AA の大きさで）", { a: before.good[0], b: before.good[1] });
     info.append(range);
-    const msg = before.verdict === "thick" ? "線が太めです。AA で線が二重になる所が出るかもしれません。細くしてみてください。"
-      : before.verdict === "thin" ? "線が細めです。線を拾えない所が出るかもしれません。太くするか、AA を小さくしてみてください。"
-      : before.verdict === "none" ? "線がほとんど見つかりませんでした。写真や、線の無い絵かもしれません。" : "";
+    const msg = before.verdict === "thick" ? t("線が太めです。AA で線が二重になる所が出るかもしれません。細くしてみてください。")
+      : before.verdict === "thin" ? t("線が細めです。線を拾えない所が出るかもしれません。太くするか、AA を小さくしてみてください。")
+      : before.verdict === "none" ? t("線がほとんど見つかりませんでした。写真や、線の無い絵かもしれません。") : "";
     if (msg && !changed) {
       const warn = document.createElement("p");
       warn.className = "warn";
@@ -647,9 +664,9 @@ function updatePrepPanel() {
     if (changed) {
       const a = p.result.after;
       const after = document.createElement("div");
-      after.append("変えたあと: ");
+      after.append(t("変えたあと: "));
       const b = document.createElement("b");
-      b.textContent = a.width == null ? "?" : `約 ${a.width.toFixed(1)}px`;
+      b.textContent = a.width == null ? "?" : t("約 {w}px", { w: a.width.toFixed(1) });
       const badge2 = document.createElement("span");
       badge2.className = `badge ${a.verdict}`;
       badge2.textContent = verdictText(a);
@@ -660,7 +677,7 @@ function updatePrepPanel() {
   const rec = before ? before.recommended : 0;
   const auto = $("deltaAuto");
   auto.disabled = !rec || rec === p.delta;
-  auto.textContent = rec ? `おすすめにする（${rec > 0 ? "+" : "−"}${Math.abs(rec).toFixed(1)}px）` : "おすすめ: 変えなくてよい";
+  auto.textContent = rec ? t("おすすめにする（{d}px）", { d: `${rec > 0 ? "+" : "−"}${Math.abs(rec).toFixed(1)}` }) : t("おすすめ: 変えなくてよい");
   $("deltaZero").disabled = !p.delta;
   $("prepDelta").value = p.delta;
   $("prepDelta").nextElementSibling.textContent = `${p.delta > 0 ? "+" : p.delta < 0 ? "−" : "±"}${Math.abs(p.delta).toFixed(1)}`;
@@ -671,7 +688,7 @@ function updatePrepPanel() {
 
 // 前処理しているときの表示
 function prepBusyText() {
-  return S.prep && S.prep.bg ? `背景を消して前処理しています…${bgLoadNote()}` : "前処理しています…";
+  return S.prep && S.prep.bg ? t("背景を消して前処理しています…{note}", { note: bgLoadNote() }) : t("前処理しています…");
 }
 
 function schedulePrepare(wait = PREP_WAIT) {
@@ -716,19 +733,20 @@ async function loadPrepPreview() {
   const want = p.show;
   try {
     if (!c.image) {
-      $("prepState").textContent = "前処理した画像を読んでいます…";
+      $("prepState").textContent = t("前処理した画像を読んでいます…");
       c.image = toCanvas(await loadImage(await engine.sourceURL(id, 1)), r.width, r.height);
     }
     if (want === "lineart" && !c.lineart) {
-      $("prepState").textContent = `線画を作っています…${firstLoadNote()}`;
+      $("prepState").textContent = t("線画を作っています…{note}", { note: firstLoadNote() });
       drawPrepLoupe();
       c.lineart = toCanvas(await loadImage(await engine.lineartURL(id, null, 1)), r.width, r.height);
+      clearModelStatus();
     }
   } catch (e) {
-    showError(new Error("前処理した画像が読めませんでした"));
+    showError(new Error(t("前処理した画像が読めませんでした")));
   }
   if (p.result !== r || p.show !== want) return;
-  $("prepState").textContent = `${r.width}×${r.height} px` + (want === "lineart" ? "（当てはめに使う線）" : "");
+  $("prepState").textContent = `${r.width}×${r.height} px` + (want === "lineart" ? t("（当てはめに使う線）") : "");
   drawPrepLoupe();
 }
 
@@ -769,7 +787,7 @@ function drawPrepLoupe() {
   const cached = r && p.cache.get(r.id);
   const src = cached && (p.show === "lineart" ? cached.lineart : cached.image);
   $("prepWait").hidden = !!src;
-  $("prepWait").textContent = $("prepState").textContent || "前処理しています…";
+  $("prepWait").textContent = $("prepState").textContent || t("前処理しています…");
   if (!src) { view.hidden = true; return; }
   const k = Math.max(1, Math.round(window.devicePixelRatio || 1)) * (p.zoom === "2" ? 2 : 1);
   const vw = c.width / k, vh = c.height / k;
@@ -786,9 +804,9 @@ function drawPrepLoupe() {
   const cr = p.crop || [0, 0, 1, 1];
   const fx = (x) => cr[0] + (Math.min(Math.max(x, 0), src.width) / src.width) * (cr[2] - cr[0]);
   const fy = (y) => cr[1] + (Math.min(Math.max(y, 0), src.height) / src.height) * (cr[3] - cr[1]);
-  const l = fx(sx), t = fy(sy), rr = fx(sx + vw), b = fy(sy + vh);
+  const l = fx(sx), tp = fy(sy), rr = fx(sx + vw), b = fy(sy + vh);
   view.hidden = false;
-  Object.assign(view.style, { left: `${l * fit.w}px`, top: `${t * fit.h}px`, width: `${(rr - l) * fit.w}px`, height: `${(b - t) * fit.h}px` });
+  Object.assign(view.style, { left: `${l * fit.w}px`, top: `${tp * fit.h}px`, width: `${(rr - l) * fit.w}px`, height: `${(b - tp) * fit.h}px` });
 }
 
 // 「この設定で候補を作る」
@@ -883,7 +901,7 @@ function sourceCanvas() {
 }
 
 function sourceItem() {
-  return { key: "src", title: "元の画像", note: S.image.file || "", width: S.image.width, height: S.image.height,
+  return { key: "src", title: t("元の画像"), note: S.image.file || "", width: S.image.width, height: S.image.height,
            chooseable: false, canvas: sourceCanvas() };
 }
 
@@ -892,13 +910,13 @@ function sourceItem() {
 function showPresets() {
   if (!S.image) return;
   show("presets");
-  $("pickTitle").textContent = "1. 候補を選ぶ";
-  $("pickLead").textContent = "描き込みの少ない順に並んでいます。";
+  $("pickTitle").textContent = t("1. 候補を選ぶ");
+  $("pickLead").textContent = t("描き込みの少ない順に並んでいます。");
   $("scaleButtons").hidden = true;
   const items = [sourceItem()];
   S.presets.forEach((p, i) => {
     const r = S.results.get(rkey(i, 1));
-    items.push({ key: `p${i}`, title: p.title, note: p.note, width: S.image.width, height: S.image.height,
+    items.push({ key: `p${i}`, title: tr(p.title), note: tr(p.note), width: S.image.width, height: S.image.height,
                  chooseable: true, canvas: r ? resultCanvas(r) : null, time: r ? secs(r.ms) : "" });
   });
   compare.setItems(items, S.base >= 0 ? `p${S.base}` : null);
@@ -922,15 +940,15 @@ function fits(sc) {
 // ---------- 2. 大きさを選ぶ ----------
 
 function sizeNote(r) {
-  return `${r.width}×${r.height} px、${r.rows} 行`;
+  return t("{w}×{h} px、{rows} 行", { w: r.width, h: r.height, rows: r.rows });
 }
 
 function showScales() {
   if (S.base < 0) return;
   show("scales");
   const preset = S.presets[S.base];
-  $("pickTitle").textContent = "2. 大きさを選ぶ";
-  $("pickLead").textContent = `「${preset.title}」を、大きさを少しずつ変えて作ります。大きさが変わると文字の並びも変わります。`;
+  $("pickTitle").textContent = t("2. 大きさを選ぶ");
+  $("pickLead").textContent = t("「{title}」を、大きさを少しずつ変えて作ります。大きさが変わると文字の並びも変わります。", { title: tr(preset.title) });
   $("scaleButtons").hidden = false;
   S.scales.sort((a, b) => a - b);
   const items = [sourceItem()];
@@ -954,7 +972,7 @@ function addScale(d) {
   const sc = Math.round((ends + d * SCALE_STEP) * 100) / 100;
   if (sc < SCALE_MIN || sc > SCALE_MAX || S.scales.includes(sc)) return;
   if (!fits(sc)) {
-    setStatus(`AA の長辺は ${S.maxSide}px までです。これより大きくはできません`, true);
+    setStatus(t("AA の長辺は {max}px までです。これより大きくはできません", { max: S.maxSide }), true);
     return;
   }
   S.scales.push(sc);
@@ -966,7 +984,7 @@ function chooseScale(sc) {
   if (!r) return;
   const same = S.editKey && S.editKey.base === S.base && S.editKey.scale === sc;
   if (!same) {
-    if (S.fixed.size && !confirm(`手で直した行（${S.fixed.size} 行）を外して、この候補で仕上げを始めます。よろしいですか？（塗った所と線画の直しは残ります）`)) return;
+    if (S.fixed.size && !confirm(t("手で直した行（{n} 行）を外して、この候補で仕上げを始めます。よろしいですか？（塗った所と線画の直しは残ります）", { n: S.fixed.size }))) return;
     S.scale = sc;
     S.editKey = { base: S.base, scale: sc };
     S.dims = { width: r.width, height: r.height, rows: r.rows };
@@ -985,7 +1003,7 @@ function chooseScale(sc) {
   }
   show("edit");
   drawEditor();
-  setStatus("仕上げの画面です。調整、行を直す、塗って描き込みを増やす・減らす、線画を直す、が使えます");
+  setStatus(t("仕上げの画面です。調整、行を直す、塗って描き込みを増やす・減らす、線画を直す、が使えます"));
   if (!same && (S.hasPaint || S.lineStrokes.length)) requestEdit();
 }
 
@@ -997,7 +1015,7 @@ function updateBaseOptions() {
   S.presets.forEach((p, i) => {
     const o = document.createElement("option");
     o.value = String(i);
-    o.textContent = p.title;
+    o.textContent = tr(p.title);
     sel.append(o);
   });
   sel.value = String(S.base);
@@ -1147,12 +1165,12 @@ function drawEditor() {
   const text = $("text");
   if (document.activeElement !== text) text.value = shown().join("\n");
   const chars = lines.reduce((n, s) => n + [...s].length, 0);
-  $("info").textContent = `${S.dims.width}×${lines.length * ROW_H} px、${lines.length} 行、${chars} 文字`
-    + (S.ms ? `、作成 ${secs(S.ms)}` : "");
-  $("scaleInfo").textContent = `大きさ ×${S.scale.toFixed(2)}`;
+  $("info").textContent = t("{w}×{h} px、{rows} 行、{chars} 文字", { w: S.dims.width, h: lines.length * ROW_H, rows: lines.length, chars })
+    + (S.ms ? t("、作成 {time}", { time: secs(S.ms) }) : "");
+  $("scaleInfo").textContent = t("大きさ ×{k}", { k: S.scale.toFixed(2) });
   updateUndoButtons();
   $("fixedNote").textContent = S.fixed.size
-    ? `手で直した行が ${S.fixed.size} 行あります（左の印）。設定を変えて作り直しても、その行はそのままです。` : "";
+    ? t("手で直した行が {n} 行あります（左の印）。設定を変えて作り直しても、その行はそのままです。", { n: S.fixed.size }) : "";
   drawUnder();
   drawLines();
   layoutStage();
@@ -1186,7 +1204,7 @@ async function drawUnder() {
     try {
       img = await loadImage(await engine.lineartURL(id, S.settings.color, S.scale));
     } catch (e) {
-      return showError(new Error("下絵が読めませんでした"));
+      return showError(new Error(t("下絵が読めませんでした")));
     }
     if (!S.image || S.image.id !== id) return;
     S.underCache.set(imgKey, img);
@@ -1271,7 +1289,7 @@ function undo() {
   restore(e, "before");
   S.redo.push(e);
   updateUndoButtons();
-  setStatus("1つ戻しました（Ctrl+Y でやり直せます）");
+  setStatus(t("1つ戻しました（Ctrl+Y でやり直せます）"));
 }
 
 function redo() {
@@ -1280,14 +1298,14 @@ function redo() {
   restore(e, "after");
   S.undo.push(e);
   updateUndoButtons();
-  setStatus("やり直しました");
+  setStatus(t("やり直しました"));
 }
 
 // 「手直しを全て取り消す」（これも「1つ戻す」で戻せる）
 function clearAll() {
   const what = editsText();
   if (!what) return;
-  if (!confirm(`手直し（${what}）を全て取り消して、エンジンの結果に戻します。よろしいですか？`)) return;
+  if (!confirm(t("手直し（{what}）を全て取り消して、エンジンの結果に戻します。よろしいですか？", { what }))) return;
   const entry = {
     kind: "all", paint: S.hasPaint, lines: S.lineStrokes.length > 0,
     before: { fixed: new Map(S.fixed), level: S.hasPaint ? S.level.slice() : null, lines: S.lineStrokes },
@@ -1295,7 +1313,7 @@ function clearAll() {
   };
   pushUndo(entry);
   restore(entry, "after");
-  setStatus("手直しを全て取り消しました（「1つ戻す」で元に戻せます）");
+  setStatus(t("手直しを全て取り消しました（「1つ戻す」で元に戻せます）"));
 }
 
 // ---------- 3. 仕上げ: 塗る ----------
@@ -1428,7 +1446,7 @@ function finishStroke() {
     }
   }
   if (!changed) {
-    setStatus(`ここは、これ以上${st.sign > 0 ? "増やせ" : "減らせ"}ません（${PAINT_MAX} 回まで）`);
+    setStatus(t(st.sign > 0 ? "ここは、これ以上増やせません（{n} 回まで）" : "ここは、これ以上減らせません（{n} 回まで）", { n: PAINT_MAX }));
     return;
   }
   pushUndo({ kind: "paint", box: [x0, y0, w, h], before, after });
@@ -1522,17 +1540,25 @@ function setTool(v) {
   $("paintCanvas").style.pointerEvents = active ? "auto" : "none";
   $("rowPanel").hidden = v !== "row";
   $("paintPanel").hidden = !painting();
-  $("paintWhat").textContent = v === "less" ? "減り" : "増え";
   $("linePanel").hidden = !lining();
-  $("lineWhat").textContent = v === "draw"
-    ? "なぞった所に線を描き（緑）、すぐに作り直します。押すだけなら点になります（鼻や口の点に）。細かく描くときは「等倍」「2倍」で。"
-    : "なぞった所の線を消して（灰色）、すぐに作り直します。背景の線など、AA にしたくない線を消すのに使います。";
+  toolTexts();
   if (v !== "row") {
     cancelRow();
     $("rowHover").hidden = true;
   }
   if (!painting() && v !== "erase") $("brush").hidden = true;
   if (S.dims) drawLines();
+}
+
+// 道具の説明（塗る・線画を直す）
+function toolTexts() {
+  const v = S.tool;
+  $("paintPanel").textContent = t(v === "less"
+    ? "AA の上を塗ると、その所の描き込みが減り、すぐに作り直します。同じ所を塗り重ねるほど強く効きます（{n} 回まで）。ブラシの大きさは AA の 1 行ぶん弱です。"
+    : "AA の上を塗ると、その所の描き込みが増え、すぐに作り直します。同じ所を塗り重ねるほど強く効きます（{n} 回まで）。ブラシの大きさは AA の 1 行ぶん弱です。", { n: PAINT_MAX });
+  $("lineWhat").textContent = v === "draw"
+    ? t("なぞった所に線を描き（緑）、すぐに作り直します。押すだけなら点になります（鼻や口の点に）。細かく描くときは「等倍」「2倍」で。")
+    : t("なぞった所の線を消して（灰色）、すぐに作り直します。背景の線など、AA にしたくない線を消すのに使います。");
 }
 
 // ---------- 3. 仕上げ: 線画を直す ----------
@@ -1601,8 +1627,8 @@ function eraser(state, w, h, pts, r) {
     for (let y = y0; y <= y1; y++) {
       for (let x = x0; x <= x1; x++) {
         const px = x + 0.5, py = y + 0.5;
-        const t = L2 ? Math.max(0, Math.min(1, ((px - a[0]) * ux + (py - a[1]) * uy) / L2)) : 0;
-        const qx = a[0] + t * ux - px, qy = a[1] + t * uy - py;
+        const k = L2 ? Math.max(0, Math.min(1, ((px - a[0]) * ux + (py - a[1]) * uy) / L2)) : 0;
+        const qx = a[0] + k * ux - px, qy = a[1] + k * uy - py;
         if (qx * qx + qy * qy <= r2) state[y * w + x] = LINE_ERASE;
       }
     }
@@ -1656,7 +1682,7 @@ async function lineBase() {
   try {
     img = await loadImage(await engine.lineartURL(id, S.settings.color, S.scale));
   } catch (e) {
-    showError(new Error("線画が読めませんでした"));
+    showError(new Error(t("線画が読めませんでした")));
     return null;
   }
   if (!S.image || S.image.id !== id) return null;
@@ -1746,7 +1772,7 @@ function finishLineStroke() {
   pushUndo({ kind: "line", before, after: S.lineStrokes });
   lineChanged();
   requestEdit();
-  setStatus(st.line === "draw" ? "線を描き足しました（Ctrl+Z で戻せます）" : "線を消しました（Ctrl+Z で戻せます）");
+  setStatus(st.line === "draw" ? t("線を描き足しました（Ctrl+Z で戻せます）") : t("線を消しました（Ctrl+Z で戻せます）"));
 }
 
 // ---------- 3. 仕上げ: 行を直す ----------
@@ -1763,7 +1789,7 @@ function selectRow(row, x) {
   S.rowSel = { row, x, current, options: null, pick: -1, hover: -1 };
   $("rowHover").hidden = true;
   jobs.row = true;
-  $("busy").textContent = "行の候補を作っています…";
+  $("busy").textContent = t("行の候補を作っています…");
   $("busy").hidden = false;
   drawRowPanel();
   drawEditor();
@@ -1776,7 +1802,7 @@ async function runRow() {
   const gen = S.gen;
   const r = await engine.rowOptions(S.image.id, sel.row, requestSettings(), currentPaint(), S.scale, sel.current, currentEdit());
   if (gen !== S.gen || S.rowSel !== sel) return;
-  const options = [{ kind: "now", label: S.fixed.has(sel.row) ? "いまの行（手で直した行）" : "いまの行", line: sel.current }];
+  const options = [{ kind: "now", label: S.fixed.has(sel.row) ? "いまの行（手で直した行）" : "いまの行", line: sel.current }];   // 名前は表示するときに訳す
   const engineLine = S.lines[sel.row];
   if (S.fixed.has(sel.row) && engineLine !== sel.current) {
     options.push({ kind: "now", label: "直す前（エンジンの結果）", line: engineLine });
@@ -1785,7 +1811,7 @@ async function runRow() {
   sel.options = options.concat(r.options.filter((o) => !have.has(o.line)));
   sel.ms = r.ms;
   drawRowPanel();
-  setStatus(`${sel.row + 1} 行目の候補を ${r.options.length} 個作りました（${secs(r.ms)}）`);
+  setStatus(t("{row} 行目の候補を {n} 個作りました（{time}）", { row: sel.row + 1, n: r.options.length, time: secs(r.ms) }));
 }
 
 function cancelRow() {
@@ -1815,7 +1841,7 @@ function applyRow() {
     const before = new Map(S.fixed);
     setFixed(sel.row, line);
     pushUndo({ kind: "fixed", before, after: new Map(S.fixed) });
-    setStatus(`${sel.row + 1} 行目を差し替えました（Ctrl+Z で戻せます）`);
+    setStatus(t("{row} 行目を差し替えました（Ctrl+Z で戻せます）", { row: sel.row + 1 }));
   }
   S.rowSel = null;
   drawRowPanel();
@@ -1855,12 +1881,12 @@ function drawRowPanel() {
   $("rowHead").hidden = !sel;
   $("rowHint").hidden = !!sel;
   if (!sel) return;
-  $("rowTitle").textContent = `${sel.row + 1} 行目`;
+  $("rowTitle").textContent = t("{row} 行目", { row: sel.row + 1 });
   $("rowApply").disabled = true;
   if (!sel.options) {
     const p = document.createElement("p");
     p.className = "note";
-    p.textContent = "候補を作っています…";
+    p.textContent = t("候補を作っています…");
     list.append(p);
     return;
   }
@@ -1872,7 +1898,7 @@ function drawRowPanel() {
       if (kind !== "now") {
         const h = document.createElement("div");
         h.className = "rgroup";
-        h.textContent = KIND_TITLE[kind] || kind;
+        h.textContent = KIND_TITLE[kind] ? t(KIND_TITLE[kind]) : kind;
         list.append(h);
       }
     }
@@ -1880,7 +1906,7 @@ function drawRowPanel() {
     b.className = "ropt";
     const label = document.createElement("span");
     label.className = "rlabel";
-    label.textContent = o.label;
+    label.textContent = o.kind === "now" ? t(o.label) : tr(o.label);
     b.append(label, rowStrip(o.line, sel.x, cssW));
     b.addEventListener("pointerenter", () => { sel.hover = i; drawEditor(); });
     b.addEventListener("pointerleave", () => { sel.hover = -1; drawEditor(); });
@@ -1891,7 +1917,7 @@ function drawRowPanel() {
   if (sel.options.length <= 1) {
     const p = document.createElement("p");
     p.className = "note";
-    p.textContent = "この行には、見た目の違う候補がありませんでした。";
+    p.textContent = t("この行には、見た目の違う候補がありませんでした。");
     list.append(p);
   }
 }
@@ -1907,8 +1933,8 @@ function applyText() {
   const n = Math.max(rows.length, S.lines.length);
   const fixed = new Map();
   for (let r = 0; r < n; r++) {
-    const t = rows[r] ?? "";
-    if (t !== (S.lines[r] ?? "")) fixed.set(r, t);
+    const line = rows[r] ?? "";
+    if (line !== (S.lines[r] ?? "")) fixed.set(r, line);
   }
   S.fixed = fixed;
   cancelRow();
@@ -1923,8 +1949,8 @@ function updateTextInfo() {
   const line = text.value.split("\n")[r] ?? "";
   const w = S.table.lineWidth(line);
   const unknown = S.table.unknown([line]);
-  $("textInfo").textContent = `${r + 1} 行目: 幅 ${w} px（AA の幅 ${S.dims.width} px、MS Pゴシックで）`
-    + (unknown.length ? `。辞書に無い文字: ${unknown.join(" ")}` : "");
+  $("textInfo").textContent = t("{row} 行目: 幅 {w} px（AA の幅 {W} px、MS Pゴシックで）", { row: r + 1, w, W: S.dims.width })
+    + (unknown.length ? t("。辞書に無い文字: {chars}", { chars: unknown.join(" ") }) : "");
 }
 
 function setupText() {
@@ -1975,11 +2001,11 @@ function updateExportLabels() {
   const f = embedFont();
   const b = $("saveHtmlFont");
   b.disabled = !f;
-  b.textContent = f ? `.html（${f.label} 埋め込み）` : ".html（フォント埋め込み）";
-  b.title = f ? `AA に使う文字だけを ${f.label} から抜き出して埋め込みます（${f.license}）。どの環境・ズームでも同じ見た目になります`
-    : "埋め込めるフォントがありません（python -m webapp.get_fonts で取ってきてください）";
-  $("htmlNote").textContent = ".html は MS Pゴシックで表示します（ブラウザのズームが 100% のときに位置が合います）。"
-    + (f ? `埋め込みのほうは ${f.label} で、どの環境・ズームでも同じ見た目です。` : "");
+  b.textContent = f ? t(".html（{label} 埋め込み）", { label: tr(f.label) }) : t(".html（フォント埋め込み）");
+  b.title = f ? t("AA に使う文字だけを {label} から抜き出して埋め込みます（{license}）。どの環境・ズームでも同じ見た目になります", { label: tr(f.label), license: tr(f.license) })
+    : t("埋め込めるフォントがありません（python -m webapp.get_fonts で取ってきてください）");
+  $("htmlNote").textContent = t(".html は MS Pゴシックで表示します（ブラウザのズームが 100% のときに位置が合います）。")
+    + (f ? t("埋め込みのほうは {label} で、どの環境・ズームでも同じ見た目です。", { label: tr(f.label) }) : "");
 }
 
 function dataURL(blob) {
@@ -1998,13 +2024,13 @@ async function saveHtmlFont() {
   if (!lines || !f) return;
   const b = $("saveHtmlFont");
   b.disabled = true;
-  setStatus(`${f.label} から AA に使う文字を抜き出しています…`);
+  setStatus(t("{label} から AA に使う文字を抜き出しています…", { label: tr(f.label) }));
   try {
     const font = await engine.fontSubset(f.id, lines.join(""));
     const url = (await dataURL(font)).replace(/^data:[^;,]*/, "data:font/woff2");
-    const html = toHtml(lines, { family: `aame-${f.id}`, label: f.label, license: f.license, source: f.source, url });
+    const html = toHtml(lines, { family: `aame-${f.id}`, label: tr(f.label), license: tr(f.license), source: f.source, url });
     download(new Blob([html], { type: "text/html;charset=utf-8" }), `${S.image ? S.image.name : "aa"}_aa_${f.id}.html`);
-    setStatus(`${f.label} を埋め込んだ .html を書き出しました（フォント ${Math.max(1, Math.round(font.size / 1024))} KB）`);
+    setStatus(t("{label} を埋め込んだ .html を書き出しました（フォント {kb} KB）", { label: tr(f.label), kb: Math.max(1, Math.round(font.size / 1024)) }));
   } catch (e) {
     showError(e);
   } finally {
@@ -2018,11 +2044,11 @@ function setupExport() {
     if (!lines) return;
     try {
       await navigator.clipboard.writeText(toText(lines));
-      setStatus("テキストをコピーしました");
+      setStatus(t("テキストをコピーしました"));
     } catch (e) {
       $("textBox").open = true;
       $("text").select();
-      setStatus("コピーできなかったので、下のテキストを選んであります。Ctrl+C でコピーしてください", true);
+      setStatus(t("コピーできなかったので、下のテキストを選んであります。Ctrl+C でコピーしてください"), true);
     }
   });
   $("saveTxt").addEventListener("click", () => {
@@ -2074,9 +2100,9 @@ function normalizeExclude(chars) {
 function updateDictButton() {
   const n = [...S.exclude].length;
   const b = $("dictBtn");
-  b.textContent = n ? `使う文字（−${n}）` : "使う文字";
+  b.textContent = n ? t("使う文字（−{n}）", { n }) : t("使う文字");
   b.classList.toggle("on", n > 0);
-  b.title = n ? `当てはめに使わない文字が ${n} 文字あります: ${S.exclude}` : "当てはめに使う文字を選びます（いまは辞書の文字をすべて使います）";
+  b.title = n ? t("当てはめに使わない文字が {n} 文字あります: {chars}", { n, chars: S.exclude }) : t("当てはめに使う文字を選びます（いまは辞書の文字をすべて使います）");
 }
 
 // 使わない文字を変えて、いまの画面の AA を作り直す
@@ -2092,7 +2118,7 @@ function applyExclude(text) {
   pending.clear();
   S.results = new Map();
   const n = [...text].length;
-  setStatus(n ? `${n} 文字を使わずに作り直します` : "辞書の文字をすべて使って作り直します");
+  setStatus(n ? t("{n} 文字を使わずに作り直します", { n }) : t("辞書の文字をすべて使って作り直します"));
   if (S.view === "presets") showPresets();
   else if (S.view === "scales") showScales();
   else if (S.view === "edit") {
@@ -2124,7 +2150,7 @@ function openDict() {
     const b = document.createElement("button");
     b.type = "button";
     b.className = "gcell";
-    b.title = `${ch}（U+${ch.codePointAt(0).toString(16).toUpperCase().padStart(4, "0")}、幅 ${S.table.width(ch)}px）`;
+    b.title = t("{ch}（U+{code}、幅 {w}px）", { ch, code: ch.codePointAt(0).toString(16).toUpperCase().padStart(4, "0"), w: S.table.width(ch) });
     b.append(glyphCanvas(ch));
     if (count != null) {
       const k = document.createElement("span");
@@ -2146,14 +2172,14 @@ function openDict() {
     h.textContent = title;
     head.append(h);
     if (toggle) {
-      const t = document.createElement("button");
-      t.type = "button";
-      t.className = "ghost small";
-      t.addEventListener("click", () => toggleChars(chars, chars.some((ch) => !dict.draft.has(ch))));
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "ghost small";
+      button.addEventListener("click", () => toggleChars(chars, chars.some((ch) => !dict.draft.has(ch))));
       const info = document.createElement("span");
       info.className = "muted";
-      head.append(info, t);
-      dict.heads.push({ chars, info, button: t });
+      head.append(info, button);
+      dict.heads.push({ chars, info, button });
     }
     const grid = document.createElement("div");
     grid.className = "ggrid";
@@ -2168,12 +2194,12 @@ function openDict() {
     const ink = new Set(inkChars());
     for (const line of lines) for (const ch of line) if (ink.has(ch)) counts.set(ch, (counts.get(ch) || 0) + 1);
     const used = [...counts.keys()].sort((a, b) => counts.get(b) - counts.get(a));
-    if (used.length) section(`この AA で使っている文字（${used.length} 種類、多い順。数字は使っている数）`, used, counts, false);
+    if (used.length) section(t("この AA で使っている文字（{n} 種類、多い順。数字は使っている数）", { n: used.length }), used, counts, false);
   }
   const all = inkChars();
   for (const [id, label] of CATEGORIES) {
     const chars = all.filter((ch) => categoryOf(ch) === id);
-    if (chars.length) section(label, chars);
+    if (chars.length) section(t(label), chars);
   }
   refreshDict();
   $("dictDialog").showModal();
@@ -2191,12 +2217,12 @@ function refreshDict() {
   for (const [ch, cells] of dict.cells) for (const b of cells) b.classList.toggle("off", dict.draft.has(ch));
   for (const { chars, info, button } of dict.heads) {
     const on = chars.filter((ch) => !dict.draft.has(ch)).length;
-    info.textContent = `${on} / ${chars.length} 文字を使う`;
-    button.textContent = on < chars.length ? "すべて使う" : "すべて外す";
+    info.textContent = t("{on} / {total} 文字を使う", { on, total: chars.length });
+    button.textContent = on < chars.length ? t("すべて使う") : t("すべて外す");
   }
   const total = inkChars().length;
   const off = [...dict.draft].length;
-  $("dictCount").textContent = `${total} 文字のうち ${total - off} 文字を使う（空白はいつも使います）`;
+  $("dictCount").textContent = t("{total} 文字のうち {used} 文字を使う（空白はいつも使います）", { total, used: total - off });
   const changed = normalizeExclude([...dict.draft]) !== S.exclude;
   $("dictOk").disabled = !changed;
 }
@@ -2222,16 +2248,25 @@ async function setupFonts() {
   for (const f of list) {
     const o = document.createElement("option");
     o.value = f.id;
-    o.textContent = f.label;
-    o.title = [f.note, f.license].filter(Boolean).join(" / ");
     sel.append(o);
   }
+  fontLabels();
   sel.value = S.fontId;
   sel.addEventListener("change", () => setFont(sel.value));
   updateExportLabels();
   // 前に選んだフォント（無ければ DEFAULT_FONT）にする。読めなければ MS Pゴシックのまま
   const want = load(FONT_KEY) || DEFAULT_FONT;
   if (want !== S.fontId && list.some((f) => f.id === want)) await setFont(want, { quiet: true });
+}
+
+// 表示フォントの一覧の名前
+function fontLabels() {
+  for (const o of $("font").options) {
+    const f = S.fonts.find((x) => x.id === o.value);
+    if (!f) continue;
+    o.textContent = tr(f.label);
+    o.title = [f.note, f.license].filter(Boolean).map(tr).join(" / ");
+  }
 }
 
 // quiet: 起動したときの切り替え（うまくいったときは何も出さない）
@@ -2242,7 +2277,8 @@ async function setFont(id, { quiet = false } = {}) {
   } catch (e) {
     console.error(e);
     $("font").value = S.fontId;
-    setStatus(`フォント「${info.label}」が読めなかったので、${S.fonts.find((f) => f.id === S.fontId)?.label || "MS Pゴシック"}で表示します（python -m webapp.get_fonts で取ってきてください）`, !quiet);
+    setStatus(t("フォント「{label}」が読めなかったので、{fallback}で表示します（python -m webapp.get_fonts で取ってきてください）",
+      { label: tr(info.label), fallback: tr(S.fonts.find((f) => f.id === S.fontId)?.label || "MS Pゴシック") }), !quiet);
     return;
   }
   S.fontId = id;
@@ -2256,7 +2292,8 @@ async function setFont(id, { quiet = false } = {}) {
     drawEditor();
     drawRowPanel();
   }
-  if (!quiet) setStatus(`表示フォント: ${info.label}${info.builtin ? "" : `（${info.license}）`}`);
+  if (!quiet) setStatus(info.builtin ? t("表示フォント: {label}", { label: tr(info.label) })
+    : t("表示フォント: {label}（{license}）", { label: tr(info.label), license: tr(info.license) }));
 }
 
 // ---------- 始める ----------
@@ -2292,7 +2329,7 @@ function setupInput() {
     document.body.classList.remove("dragging");
     const f = [...(e.dataTransfer.files || [])].find((x) => x.type.startsWith("image/"));
     if (f) openFile(f);
-    else setStatus("画像のファイルをドロップしてください", true);
+    else setStatus(t("画像のファイルをドロップしてください"), true);
   });
   window.addEventListener("paste", (e) => {
     if (document.activeElement === $("text")) return;
@@ -2305,8 +2342,8 @@ function setupInput() {
 }
 
 function typing() {
-  const t = document.activeElement && document.activeElement.tagName;
-  return t === "TEXTAREA" || t === "INPUT" || t === "SELECT";
+  const tag = document.activeElement && document.activeElement.tagName;
+  return tag === "TEXTAREA" || tag === "INPUT" || tag === "SELECT";
 }
 
 function setupControls() {
@@ -2409,7 +2446,50 @@ function setupControls() {
   });
 }
 
+// ---------- 言葉（日本語・英語） ----------
+
+function localNote() {
+  if (engine.kind !== "local") return;
+  document.querySelector(".localnote").title =
+    t("画像は、このブラウザの中だけで処理します。インターネットには送りません（読み込むのはプログラムとモデルだけです）。");
+}
+
+function langButton() {
+  $("langBtn").textContent = lang === "ja" ? "English" : "日本語";
+}
+
+// 言葉を切り替えて、いまの画面を描き直す（index.html の文は setLang が訳す）
+function switchLang() {
+  setLang(lang === "ja" ? "en" : "ja");
+  langButton();
+  localNote();
+  drawDevice();
+  updateDictButton();
+  updateExportLabels();
+  fontLabels();
+  updateBaseOptions();
+  toolTexts();
+  setStatus("");
+  if (S.prep && S.orig) {
+    placeCropBox();
+    updatePrepPanel();
+    if (S.view === "prep") {
+      $("prepState").textContent = prepBusyText();
+      if (S.prep.result && S.prep.key === prepKey()) loadPrepPreview();
+      else drawPrepLoupe();
+    }
+  }
+  if (S.view === "presets") showPresets();
+  else if (S.view === "scales") showScales();
+  else if (S.view === "edit") {
+    drawEditor();
+    drawRowPanel();
+  }
+}
+
 async function main() {
+  langButton();
+  $("langBtn").addEventListener("click", switchLang);
   setupInput();
   setupPrep();
   setupControls();
@@ -2421,10 +2501,7 @@ async function main() {
   syncControls();
   try {
     engine.setProgressHandler(onEngineProgress);
-    if (engine.kind === "local") {
-      document.querySelector(".localnote").title = "画像は、このブラウザの中だけで処理します。インターネットには送りません"
-        + "（読み込むのはプログラムとモデルだけです）。";
-    }
+    localNote();
     const [glyphs, presets] = await Promise.all([engine.glyphs(), engine.presets()]);
     S.table = new GlyphTable(glyphs);
     S.renderer = new Renderer(S.table);

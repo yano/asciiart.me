@@ -13,6 +13,8 @@ LAN のほかの PC から http で開いても動かない。
 """
 
 import argparse
+import hashlib
+import re
 import shutil
 from pathlib import Path
 
@@ -79,6 +81,38 @@ if __name__ == "__main__":
 '''
 
 
+# 版をつける文字列: JS の中の、相対パスだけの文字列（モジュール、Worker、辞書・glyphs.json・fonts.json）と、index.html の src・href
+LOCAL_FILE = re.compile(r"""(["'])((?:\.{1,2}/)?[\w\-./]+\.(?:js|json|txt))\1""")
+HTML_REF = re.compile(r"""((?:src|href)=")([\w\-./]+\.(?:js|css))(")""")
+
+
+def rewrite(path, pattern, repl):
+    """文字列を置き換える（改行は元のまま）"""
+    with open(path, encoding="utf-8", newline="") as f:
+        s = f.read()
+    with open(path, "w", encoding="utf-8", newline="") as f:
+        f.write(pattern.sub(repl, s))
+
+
+def stamp(out):
+    """プログラムとデータの URL に ?v=<版> を付ける。
+
+    panzersoft.com（Cloudflare）は JS などをブラウザに 4 時間残させる（_headers の no-cache より、サイトの設定が勝つ）ので、
+    更新した直後に、古いファイルと新しいファイルが混ざって動くことがある（2026-11-17）。index.html は毎回読み直されるので、
+    そこから読むファイルの URL を版ごとに変えれば、いつもそろった組で動く。版は中身のハッシュ（変わらなければ同じ URL のまま）。
+    """
+    files = sorted(p for p in out.rglob("*") if p.is_file() and p.suffix in (".js", ".json", ".txt", ".css", ".html"))
+    h = hashlib.sha256()
+    for p in files:
+        h.update(p.relative_to(out).as_posix().encode() + b"\0" + p.read_bytes())
+    version = h.hexdigest()[:10]
+    for p in files:
+        if p.suffix == ".js":
+            rewrite(p, LOCAL_FILE, lambda m: f"{m[1]}{m[2]}?v={version}{m[1]}")
+    rewrite(out / "index.html", HTML_REF, lambda m: f"{m[1]}{m[2]}?v={version}{m[3]}")
+    return version
+
+
 def build(out):
     out = Path(out)
     if out.exists():
@@ -86,13 +120,14 @@ def build(out):
     shutil.copytree(STATIC, out, ignore=lambda d, names: [n for n in names if n in SKIP or n.startswith("_")])
     (out / "dict").mkdir()
     shutil.copy2(DICT_FILE, out / "dict" / DICT_FILE.name)
+    version = stamp(out)
     (out / "serve.py").write_text(SERVE, encoding="utf-8")
     fonts = out / "fonts"
     if not fonts.exists():
         print("表示フォントがありません（python -m webapp.get_fonts で取ってくると、Saitamaar などが使えます）")
     files = [p for p in out.rglob("*") if p.is_file()]
     size = sum(p.stat().st_size for p in files)
-    print(f"{out}  {len(files)} ファイル、{size / 1e6:.1f} MB")
+    print(f"{out}  {len(files)} ファイル、{size / 1e6:.1f} MB（版 {version}）")
     return out
 
 

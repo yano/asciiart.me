@@ -5,6 +5,20 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>asciiart.me</title>
 <link rel="stylesheet" href="style.css">
+<script>
+// 英語で表示するときは、i18n.js が訳し終えるまで隠す（日本語が一瞬見えないように。決め方は i18n.js の detect と同じ）
+(function () {
+  var q = new URLSearchParams(location.search).get("lang"), s = null;
+  try { s = localStorage.getItem("aame.lang"); } catch (e) {}
+  var l = q === "ja" || q === "en" ? q : s === "ja" || s === "en" ? s
+    : (navigator.languages || [navigator.language]).some(function (x) { return /^ja\b/i.test(x || ""); }) ? "ja" : "en";
+  if (l === "ja") return;
+  var c = document.documentElement.classList;
+  c.add("i18n-wait");
+  setTimeout(function () { c.remove("i18n-wait"); }, 2000);
+})();
+</script>
+<script type="module" src="i18n.js"></script>
 <script type="module" src="app.js"></script>
 </head>
 <body>
@@ -23,6 +37,7 @@
   <label class="fontsel" title="AA を表示するフォント。書き出す PNG もこのフォントで描きます">表示フォント <select id="font"></select></label>
   <button id="dictBtn" class="ghost small dictbtn">使う文字</button>
   <span id="status" class="status" role="status"></span>
+  <button id="langBtn" class="ghost small langbtn" title="Language / 言語"></button>
   <a class="github" href="https://github.com/yano/asciiart.me" target="_blank" rel="noopener" title="GitHub のリポジトリ" aria-label="GitHub のリポジトリ">
     <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.45-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8Z"/></svg>
   </a>
@@ -133,7 +148,7 @@
         <input id="underOpacity" type="range" min="0.05" max="1" step="0.05" value="0.15" title="下絵の濃さ">
         <span class="sep"></span>
         <span class="seg" id="zoom" role="radiogroup" aria-label="表示の大きさ">
-          <button data-v="fit">全体</button><button data-v="1">等倍</button><button data-v="2">2倍</button>
+          <button data-v="fit" data-i18n="全体（表示の大きさ）">全体</button><button data-v="1">等倍</button><button data-v="2">2倍</button>
         </span>
         <span class="sep"></span>
         <button id="prev" class="ghost" disabled title="押している間、作り直す前の AA を表示します">前の結果</button>
@@ -219,7 +234,7 @@
         </div>
 
         <p id="linePanel" class="note" hidden>AA の下に、当てはめに使う線（赤）を出しています。<span id="lineWhat"></span></p>
-        <p id="paintPanel" class="note" hidden>AA の上を塗ると、その所の描き込みが<span id="paintWhat">増え</span>、すぐに作り直します。同じ所を塗り重ねるほど強く効きます（4 回まで）。ブラシの大きさは AA の 1 行ぶん弱です。</p>
+        <p id="paintPanel" class="note" hidden></p>
 
         <div class="row buttons undorow">
           <button id="undo" class="ghost" title="Ctrl+Z" disabled>1つ戻す</button>
