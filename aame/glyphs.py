@@ -10,8 +10,8 @@ MAX_W = 16      # 最も広い文字の幅
 MIN_W = 3       # 最も狭い文字の幅
 
 ROOT = Path(__file__).resolve().parents[1]
-# 当てはめに使う辞書。いまの MS Pゴシック（v5.32）で描き直したもの（aame.make_dict）
-DICT_FILE = ROOT / "chrDict_20261115_utf8.txt"
+# 当てはめに使う辞書。いまの MS Pゴシック（v5.32）で描き直し、陰影に使う「三」を足したもの（aame.make_dict）
+DICT_FILE = ROOT / "chrDict_20261117_utf8.txt"
 # 2017 年の辞書。現行の asciiartme.py と同じ出力を出す legacy でだけ使う
 LEGACY_DICT_FILE = ROOT / "chrDict_20170327_utf8.txt"
 

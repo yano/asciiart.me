@@ -208,6 +208,20 @@ export const EN = {
     "Draw lines (green) and the AA is remade right away. A click makes a dot (for a nose or a mouth). Use \"1×\" or \"2×\" for fine work.",
   "なぞった所の線を消して（灰色）、すぐに作り直します。背景の線など、AA にしたくない線を消すのに使います。":
     "Erase lines (grey) and the AA is remade right away. Use it on lines you don't want in the AA, such as background lines.",
+  "陰影": "Shading",
+  "陰影の高密度": "Dense",
+  "陰影の低密度": "Sparse",
+  "文字": "Character",
+  "塗り方": "Fill",
+  "1行塗り": "One row",
+  "バケツ塗り": "Bucket",
+  "空白（薄い赤）を押すと、その行の空白を陰影の文字で埋めます。押したまま上下になぞると、なぞった行の空白をまとめて埋めます。":
+    "Click a blank area (light red) to fill the blank in that row with shading characters. Drag up or down to fill the rows you pass over as well. ",
+  "空白（薄い赤）を押すと、上下につながった空白をまとめて陰影の文字で埋めます（埋まる範囲は、マウスを置くと濃い赤で出ます）。":
+    "Click a blank area (light red) to fill it and all the blank space connected above and below (hover to see it in dark red). ",
+  "戻すときは「1つ戻す」で。": "Use \"Undo\" to take it back.",
+  "空白（薄い赤の所）を押してください": "Click a blank area (the light red parts)",
+  "陰影をつけました（{n} 行。Ctrl+Z で戻せます）": "Shading added ({n|row|rows}; Ctrl+Z to undo)",
   "1つ戻す": "Undo",
   "やり直す": "Redo",
   "手直しを全て取り消す": "Clear all touch-ups",

@@ -9,6 +9,7 @@ import { Compare } from "./compare.js";
 import { t, tr, list, lang, setLang } from "./i18n.js";
 import { parseDict } from "./aame/glyphs.js";
 import { dictText, glyphMaker, glyphOf } from "./addglyph.js";
+import { blankRuns, runAt, regionOf, shadeLines, makePattern, sample, SHADE_CHARS } from "./shade.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -94,6 +95,8 @@ const S = {
   added: [],          // 足した文字 {ch, w, rows}（setAdded で変える）
   addedSet: new Set(),
   extraText: "",      // 足した文字（辞書の形式。エンジンに渡す）
+  shade: null,        // 陰影の道具で見ている空白 {lines, runs, hover: 濃い赤で出す並び | null, drag: 塗っている途中 | null}
+  shadeOpt: { ch: ":", fill: "row" },   // 陰影の文字と塗り方（"row": 1行塗り、"bucket": バケツ塗り）
 };
 
 const rkey = (i, scale) => `${i}@${scale.toFixed(2)}`;
@@ -1123,7 +1126,7 @@ function layoutStage() {
   const h = Math.max(S.dims.height, aa.height);
   stage.style.width = `${w * z}px`;
   stage.style.height = `${h * z}px`;
-  for (const c of [aa, $("underCanvas"), $("lineCanvas")]) {
+  for (const c of [aa, $("underCanvas"), $("lineCanvas"), $("shadeCanvas")]) {
     c.style.width = `${c.width * z}px`;
     c.style.height = `${c.height * z}px`;
   }
@@ -1181,6 +1184,7 @@ function drawEditor() {
     ? t("手で直した行が {n} 行あります（左の印）。設定を変えて作り直しても、その行はそのままです。", { n: S.fixed.size }) : "";
   drawUnder();
   drawLines();
+  drawShade();
   layoutStage();
   updateTextInfo();
 }
@@ -1486,6 +1490,10 @@ function setupPainting() {
       selectRow(row, x);
       return;
     }
+    if (shading()) {
+      startShade(e);
+      return;
+    }
     if (lining()) {
       e.preventDefault();
       p.setPointerCapture(e.pointerId);
@@ -1508,6 +1516,10 @@ function setupPainting() {
       placeBand($("rowHover"), S.rowSel && S.rowSel.row === row ? null : row);
       return;
     }
+    if (shading()) {
+      moveShade(e);
+      return;
+    }
     moveBrush(e);
     if (!S.stroke) return;
     const now = at(e);
@@ -1528,12 +1540,17 @@ function setupPainting() {
       if (S.stroke.line) finishLineStroke();
       else finishStroke();
     }
+    if (S.shade && S.shade.drag) finishShade(e.type === "pointercancel");
   };
   p.addEventListener("pointerup", end);
   p.addEventListener("pointercancel", end);
   p.addEventListener("pointerleave", () => {
     brush.hidden = true;
     $("rowHover").hidden = true;
+    if (S.shade && S.shade.hover && !S.shade.drag) {
+      S.shade.hover = null;
+      drawShade();
+    }
   });
 }
 
@@ -1545,8 +1562,12 @@ function setTool(v) {
   stage.classList.toggle("painting", painting() || v === "erase");
   stage.classList.toggle("drawing", v === "draw");
   stage.classList.toggle("rowtool", v === "row");
+  stage.classList.toggle("shadetool", shading());
   $("paintCanvas").style.pointerEvents = active ? "auto" : "none";
   $("rowPanel").hidden = v !== "row";
+  $("shadePanel").hidden = !shading();
+  $("shadeCanvas").hidden = !shading();
+  S.shade = null;
   $("paintPanel").hidden = !painting();
   $("linePanel").hidden = !lining();
   toolTexts();
@@ -1555,7 +1576,10 @@ function setTool(v) {
     $("rowHover").hidden = true;
   }
   if (!painting() && v !== "erase") $("brush").hidden = true;
-  if (S.dims) drawLines();
+  if (S.dims) {
+    drawLines();
+    drawShade();
+  }
 }
 
 // 道具の説明（塗る・線画を直す）
@@ -1567,6 +1591,160 @@ function toolTexts() {
   $("lineWhat").textContent = v === "draw"
     ? t("なぞった所に線を描き（緑）、すぐに作り直します。押すだけなら点になります（鼻や口の点に）。細かく描くときは「等倍」「2倍」で。")
     : t("なぞった所の線を消して（灰色）、すぐに作り直します。背景の線など、AA にしたくない線を消すのに使います。");
+}
+
+// ---------- 3. 仕上げ: 陰影 ----------
+// 空白（半角・全角のスペース）に薄い赤の印をつけ、押した所の空白を陰影の文字で埋める（shade.js）。
+// 1行塗り: 押した行の空白の並び（押したまま上下になぞると、なぞった行の並びもまとめて）。
+// バケツ塗り: 押した並びから上下につながった並びすべて（埋まる範囲は、マウスを置くと濃い赤で出す）。
+// 埋めた行は手で直した行（S.fixed）になる（1つ戻す・やり直すも同じ）。行の終わりの空白は AA の右端までそろえる。
+
+const SHADE_KEY = "aame.shade";                  // 陰影の文字と塗り方を覚えておく（このブラウザだけ）
+const SHADE_ALL = "rgba(255, 96, 96, 0.16)";     // 空白
+const SHADE_HOVER = "rgba(226, 40, 52, 0.38)";   // 押すと埋まる所
+
+function shading() {
+  return S.tool === "dense" || S.tool === "sparse";
+}
+
+const widthOf = (ch) => S.table.width(ch);
+
+// いま見えている行の空白の並び（行が変わったときだけ数え直す）
+function shadeState() {
+  const lines = shown();
+  const key = lines.join("\n");
+  if (!S.shade || S.shade.lines !== key) S.shade = { lines: key, runs: blankRuns(lines, widthOf), hover: null, drag: null };
+  return S.shade;
+}
+
+// (row, x) の空白の並びと、押すと一緒に埋まる並び（バケツ塗りなら上下につながった並び）
+function shadeTarget(row, x) {
+  if (row < 0) return null;
+  const st = shadeState();
+  const run = runAt(st.runs, row, x);
+  if (!run) return null;
+  return { run, region: S.shadeOpt.fill === "bucket" ? regionOf(st.runs, run) : [run] };
+}
+
+function drawShade() {
+  const c = $("shadeCanvas");
+  if (!shading() || !S.dims || !S.lines) return;
+  const aa = $("aaCanvas");
+  if (c.width !== aa.width || c.height !== aa.height) {
+    c.width = aa.width;
+    c.height = aa.height;
+    if (S.z) {
+      c.style.width = `${c.width * S.z}px`;
+      c.style.height = `${c.height * S.z}px`;
+    }
+  }
+  const ctx = c.getContext("2d");
+  ctx.clearRect(0, 0, c.width, c.height);
+  const st = shadeState();
+  const fill = (runs, color) => {
+    ctx.fillStyle = color;
+    for (const r of runs) ctx.fillRect(r.a, r.row * ROW_H, (r.last ? c.width : r.b) - r.a, ROW_H);
+  };
+  fill(st.runs.flat(), SHADE_ALL);
+  if (st.drag) fill(st.drag.runs, SHADE_HOVER);
+  else if (st.hover) fill(st.hover.region, SHADE_HOVER);
+}
+
+function startShade(e) {
+  if (!S.lines) return;
+  const { row, x } = rowAt(e);
+  const target = shadeTarget(row, x);
+  if (!target) {
+    setStatus(t("空白（薄い赤の所）を押してください"));
+    return;
+  }
+  e.preventDefault();
+  $("paintCanvas").setPointerCapture(e.pointerId);
+  shadeState().drag = { runs: new Set(target.region), row, x };
+  drawShade();
+}
+
+// マウスを動かした: 塗っている途中（1行塗り）なら通った行の並びを足し、そうでなければ埋まる範囲を出す
+function moveShade(e) {
+  const { row, x } = rowAt(e);
+  const st = shadeState();
+  const drag = st.drag;
+  if (drag) {
+    if (S.shadeOpt.fill !== "row" || row < 0) return;
+    // 速く動かしても行を飛ばさないように、前の位置から今の位置までの行をすべて見る
+    const steps = Math.max(1, Math.abs(row - drag.row));
+    let added = false;
+    for (let k = 1; k <= steps; k++) {
+      const r = row === drag.row ? row : drag.row + Math.sign(row - drag.row) * k;
+      const run = runAt(st.runs, r, drag.x + ((x - drag.x) * k) / steps);
+      if (run && !drag.runs.has(run)) {
+        drag.runs.add(run);
+        added = true;
+      }
+    }
+    Object.assign(drag, { row, x });
+    if (added) drawShade();
+    return;
+  }
+  const target = shadeTarget(row, x);
+  const old = st.hover;
+  if (old && target && old.run === target.run && old.region.length === target.region.length) return;
+  if (!old && !target) return;
+  st.hover = target;
+  drawShade();
+}
+
+function finishShade(cancel) {
+  const st = shadeState();
+  const runs = [...st.drag.runs];
+  st.drag = null;
+  if (cancel) {
+    drawShade();
+    return;
+  }
+  const lines = shown();
+  const pattern = makePattern(S.shadeOpt.ch, S.tool, widthOf);
+  const changed = shadeLines(lines, runs, pattern, widthOf, S.dims.width);
+  if (!changed.size) {
+    drawShade();
+    return;
+  }
+  const before = new Map(S.fixed);
+  for (const [row, line] of changed) setFixed(row, line);
+  pushUndo({ kind: "fixed", before, after: new Map(S.fixed) });
+  setStatus(t("陰影をつけました（{n} 行。Ctrl+Z で戻せます）", { n: changed.size }));
+  drawEditor();
+}
+
+// 陰影の文字・塗り方のボタンと説明
+function updateShadeControls() {
+  const { ch, fill } = S.shadeOpt;
+  setSeg("shadeChar", ch);
+  setSeg("shadeFill", fill);
+  for (const d of ["dense", "sparse"]) $("tool").querySelector(`button[data-v=${d}] .pat`).textContent = sample(ch, d);
+  $("shadeNote").textContent = (fill === "bucket"
+    ? t("空白（薄い赤）を押すと、上下につながった空白をまとめて陰影の文字で埋めます（埋まる範囲は、マウスを置くと濃い赤で出ます）。")
+    : t("空白（薄い赤）を押すと、その行の空白を陰影の文字で埋めます。押したまま上下になぞると、なぞった行の空白をまとめて埋めます。"))
+    + t("戻すときは「1つ戻す」で。");
+}
+
+function setShadeOpt(change) {
+  Object.assign(S.shadeOpt, change);
+  store(SHADE_KEY, JSON.stringify(S.shadeOpt));
+  updateShadeControls();
+  if (S.shade) S.shade.hover = null;
+  if (S.dims) drawShade();
+}
+
+function setupShade() {
+  try {
+    const saved = JSON.parse(load(SHADE_KEY) || "{}");
+    if (SHADE_CHARS.includes(saved.ch)) S.shadeOpt.ch = saved.ch;
+    if (saved.fill === "row" || saved.fill === "bucket") S.shadeOpt.fill = saved.fill;
+  } catch (e) { /* 覚えたものが読めなければ初めの値 */ }
+  onSeg("shadeChar", (ch) => setShadeOpt({ ch }));
+  onSeg("shadeFill", (fill) => setShadeOpt({ fill }));
+  updateShadeControls();
 }
 
 // ---------- 3. 仕上げ: 線画を直す ----------
@@ -2178,7 +2356,7 @@ function setupShare() {
 // あればそれ、無ければ Saitamaar）。どちらもこのブラウザで覚える（EXCLUDE_KEY、EXTRA_KEY）。
 // 辞書のファイル（標準の辞書と同じ形式）に保存・読み込みできる。ファイルには使う文字だけを書く（外した文字は書かない）。
 
-const BASE_DICT_URL = "dict/chrDict_20261115_utf8.txt";   // 標準の辞書（aame/worker.js の DICT_URL と同じ）
+const BASE_DICT_URL = "dict/chrDict_20261117_utf8.txt";   // 標準の辞書（aame/worker.js の DICT_URL と同じ）
 const MAX_ADDED = 500;            // 足せる文字の数（aame/worker.js・webapp/server.py の MAX_EXTRA と同じ）
 const DICT_FILE_NAME = "asciiartme_dict.txt";
 const ADD_REASON = { have: "辞書にあります", missing: "MS Pゴシックに無い文字です", saitamaar: "この PC では描けません" };
@@ -2807,6 +2985,7 @@ async function main() {
   setupExport();
   setupShare();
   setupDict();
+  setupShade();
   setTool("none");
   syncControls();
   try {

@@ -18,7 +18,7 @@ const MAX_SCALES = 6;         // 1 枚の画像につき覚えておく大きさ
 const MAX_IMAGE = 2048;       // 扱う画像の長辺
 const MAX_SIDE = 1024;        // AA の長辺（持ち主の決定。デスクトップ版は 2048）
 const MAX_GLYPH_SETS = 4;
-const DICT_URL = new URL("../dict/chrDict_20261115_utf8.txt", import.meta.url);
+const DICT_URL = new URL("../dict/chrDict_20261117_utf8.txt", import.meta.url);
 
 // 画面に出す候補（aame/candidates.py の PRESETS と webapp/server.py の WEB_PRESETS）。描き込みの少ない順
 const PRESETS = [

@@ -165,6 +165,7 @@
       <div class="stage-wrap" id="stageWrap">
         <div class="stage" id="stage">
           <canvas id="underCanvas" class="layer"></canvas>
+          <canvas id="shadeCanvas" class="layer" hidden></canvas>
           <canvas id="lineCanvas" class="layer lines" hidden></canvas>
           <canvas id="aaCanvas" class="layer"></canvas>
           <div id="marks" class="marks"></div>
@@ -229,6 +230,7 @@
           <div class="toolrow"><span class="tlabel"></span><span class="seg"><button data-v="none">見るだけ</button><button data-v="row">行を直す</button></span></div>
           <div class="toolrow"><span class="tlabel">描き込み</span><span class="seg"><button data-v="more" class="v2tool">増やす</button><button data-v="less" class="v2tool">減らす</button></span></div>
           <div class="toolrow"><span class="tlabel">線画</span><span class="seg"><button data-v="erase">線を消す</button><button data-v="draw">線を描き足す</button></span></div>
+          <div class="toolrow"><span class="tlabel">陰影</span><span class="seg"><button data-v="dense"><span class="pat">:::</span><span data-i18n="陰影の高密度">高密度</span></button><button data-v="sparse"><span class="pat">: : :</span><span data-i18n="陰影の低密度">低密度</span></button></span></div>
         </div>
 
         <div id="rowPanel" hidden>
@@ -244,6 +246,11 @@
 
         <p id="linePanel" class="note" hidden>AA の下に、当てはめに使う線（赤）を出しています。<span id="lineWhat"></span></p>
         <p id="paintPanel" class="note" hidden></p>
+        <div id="shadePanel" class="shadepanel" hidden>
+          <div class="row"><span class="label">文字</span><span class="seg shadechars" id="shadeChar"><button data-v=":">:</button><button data-v=";">;</button><button data-v="i">i</button><button data-v="/">/</button><button data-v="ﾆ">ﾆ</button><button data-v="三">三</button><button data-v="_">_</button></span></div>
+          <div class="row"><span class="label">塗り方</span><span class="seg" id="shadeFill"><button data-v="row">1行塗り</button><button data-v="bucket">バケツ塗り</button></span></div>
+          <p class="note" id="shadeNote"></p>
+        </div>
 
         <div class="row buttons undorow">
           <button id="undo" class="ghost" title="Ctrl+Z" disabled>1つ戻す</button>

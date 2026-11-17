@@ -51,8 +51,9 @@ python -m aame.convert luckystar01.jpg --mode v2 --lineart manga_line --color-ed
 
 `--fill face` (or `all`) fills dark areas such as pupils with dense glyphs (`--fill-gain` sets how dense).
 
-The glyph dictionary is `chrDict_20261115_utf8.txt`: the same 551 characters as the 2017 dictionary
-(`chrDict_20170327_utf8.txt`), redrawn from today's MS PGothic (v5.32), which differs in 34 glyphs.
+The glyph dictionary is `chrDict_20261117_utf8.txt`: the same 551 characters as the 2017 dictionary
+(`chrDict_20170327_utf8.txt`), redrawn from today's MS PGothic (v5.32), which differs in 34 glyphs,
+plus `三` (added for shading).
 `python -m aame.make_dict` rebuilds it (Windows only). `--mode legacy` still uses the 2017 dictionary.
 
 Which settings look best depends on the image, so `aame.candidates` makes several variants and a
@@ -125,7 +126,11 @@ A browser front end for `aame`:
    its centre of mass, other settings), paint where you want more (or less) detail (each stroke
    over the same spot goes one step further, up to four, and the AA is remade right away), fix the
    line art itself (erase lines you do not want, such as the background, or draw lines and dots,
-   such as a nose; the lines the matcher uses are shown under the AA), edit the text directly,
+   such as a nose; the lines the matcher uses are shown under the AA), shade blank areas
+   (fill the blank in a row, or in the rows you drag over, or all the blank space connected to
+   it, with `: ; i / ﾆ 三 _`, dense like `:::` or sparse like `: : :`, aligned on a common grid; the
+   width of each row stays the same, remainders are filled with `.` where needed, and half-width
+   spaces are never doubled or put at the start of a row), edit the text directly,
    undo / redo or drop all the edits, then copy or save it as text, PNG or HTML. The HTML comes
    in two versions: plain MS PGothic, or with the display font embedded (only the glyphs the AA
    uses, a few kB), which looks the same everywhere and at any zoom. Share sends a picture of the
@@ -139,7 +144,7 @@ Cyrillic) or single characters off, for example round letters that land on lines
 the current AA uses are listed first, most used first. Spaces are always used. The choice is kept
 in the browser and applies to the candidates, the sizes, the finished AA and the row alternatives.
 Characters can also be added: type or paste them, and their shapes are drawn with MS PGothic 16px
-on your PC (exactly the dictionary's shapes; checked on all 551). Without MS PGothic they are drawn
+on your PC (exactly the dictionary's shapes; checked on all of them). Without MS PGothic they are drawn
 with Saitamaar, and only characters as wide as in MS PGothic can be added
 (`webapp/static/addable.json`, made by `node webapp/make_addable.mjs` on Windows, holds the
 MS PGothic widths; no glyph shapes are shipped). The characters in use can be saved as a dictionary

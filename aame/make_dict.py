@@ -3,7 +3,7 @@
 
 もとの辞書（chrDict_20170327_utf8.txt）は 2017 年当時のフォントから作られていて、
 いまの MS Pゴシック（v5.32）とは 34 文字・91 画素違う（「－」「＜」「＞」「→」「～」など）。
-同じ文字・同じ順番・同じ幅のまま、形だけを描き直した辞書を DICT_FILE に書く。
+同じ文字・同じ順番・同じ幅のまま、形だけを描き直し、EXTRA の文字を後ろに足した辞書を DICT_FILE に書く。
 
 文字の形は、ブラウザ（Edge）が MS Pゴシック 16px で表示するものと同じになる
 （埋め込みビットマップをそのまま使う。webapp/make_glyphs.py と同じ描き方）。
@@ -28,6 +28,8 @@ FONT_INDEX = 2          # 0: MS Gothic, 1: MS UI Gothic, 2: MS PGothic
 FONT_SIZE = 16
 Y_OFFSET = 2            # 行の上端から文字の描画原点まで（もとの辞書の 517 文字がこれで一致する）
 PAD = 8
+# もとの辞書に無く、後ろに足す文字。三: 仕上げの陰影に使う（2026-11-17、持ち主の依頼。幅はフォントの送り幅）
+EXTRA = "三"
 
 
 def draw(font, ch, width):
@@ -40,13 +42,16 @@ def draw(font, ch, width):
 
 
 def build(source=LEGACY_DICT_FILE):
-    """もとの辞書の文字・順番・幅で、形をいまのフォントから描いた GlyphSet を返す。"""
+    """もとの辞書の文字・順番・幅で、形をいまのフォントから描き、EXTRA を後ろに足した GlyphSet を返す。"""
     old = load(source)
     font = ImageFont.truetype(FONT_PATH, FONT_SIZE, index=FONT_INDEX)
-    bitmaps = np.zeros_like(old.bitmaps)
-    for i, (ch, w) in enumerate(zip(old.chars, old.widths.tolist())):
+    extra = [ch for ch in EXTRA if ch not in old]
+    chars = old.chars + extra
+    widths = old.widths.tolist() + [round(font.getlength(ch)) for ch in extra]
+    bitmaps = np.zeros((len(chars),) + old.bitmaps.shape[1:], bool)
+    for i, (ch, w) in enumerate(zip(chars, widths)):
         bitmaps[i, :, :w] = draw(font, ch, w)
-    return old, type(old)(old.chars, old.widths, bitmaps)
+    return old, type(old)(chars, widths, bitmaps)
 
 
 def write(glyphs, path):
@@ -66,10 +71,11 @@ def main():
     a = ap.parse_args()
     old, new = build()
     write(new, a.output)
-    diff = (old.bitmaps != new.bitmaps).reshape(len(old), -1).sum(1)
+    diff = (old.bitmaps != new.bitmaps[:len(old)]).reshape(len(old), -1).sum(1)
     changed = [(old.chars[i], int(diff[i])) for i in np.nonzero(diff)[0]]
     print(a.output)
-    print(f"{len(old)} 文字のうち {len(changed)} 文字、{int(diff.sum())} 画素を描き直した")
+    print(f"{len(old)} 文字のうち {len(changed)} 文字、{int(diff.sum())} 画素を描き直した。"
+          f"足した文字: {''.join(new.chars[len(old):])}（{len(new)} 文字）")
     if a.diff:
         Path(a.diff).write_text("".join(f"{ch}\tU+{ord(ch):04X}\t{n}\n" for ch, n in changed),
                                 encoding="utf-8")

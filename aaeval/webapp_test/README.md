@@ -32,6 +32,12 @@
 - `node aaeval/webapp_test/dict_test.mjs <出力> <画像> [--base URL] [--engine local|server] [--addfont saitamaar]` … 使う文字の「文字を足す」
   （見本と足せないわけ）、辞書を保存（文字数・並び・外した文字）、足した文字が AA に出るか、読み込み直しても覚えているか、× で消す、
   辞書を読み込む（ファイルに無い文字は外し、無い文字は足す）、壊れたファイル。`--addfont saitamaar` は MS Pゴシックの無い PC の代わり
+- `node aaeval/webapp_test/shade_test.mjs <出力> <画像> [--base URL] [--engine local|server]` … 仕上げの「陰影」: 空白の印（薄い赤）と
+  マウスを置いた所の範囲（濃い赤）、1行塗り（押した行・なぞった行）とバケツ塗りで埋まった行が shade.js と同じか（行の途中の幅は変わらない）、
+  1つ戻す、文字を「三」にした低密度と「_」の高密度、文字と塗り方を覚えるか、英語の名前と説明
+- `node aaeval/js/shade_check.mjs [AA のテキスト ...]` … 陰影の埋め方（webapp/static/shade.js）: 乱数の行と渡した AA のすべての空白を
+  陰影の文字（7 つ）× 高密度・低密度で埋め、幅が変わらないこと、半角スペースを続けない・行頭に置かないこと、空白の外を変えないこと、
+  入るのは陰影の文字と「.」と空白だけであることを確かめる（ブラウザは使わない）
 - `node aaeval/js/i18n_check.mjs` … 画面の英語（webapp/static/i18n_en.js）に足りない文・使っていない文が無いか（ブラウザは使わない）
 
 ui_test.mjs と ui_test2.mjs は、候補が6つ・大きさを選ぶ手順が無かったころの画面用（いまの画面では動かない）。
