@@ -26,7 +26,7 @@ const LEFTOVER = `(() => {
     if (el.closest(".gcell")) continue;   // 使う文字の升目の title は、その文字
     for (const a of ["title", "aria-label"]) {
       const v = el.getAttribute(a);
-      if (v && JP.test(v) && el.id !== "langBtn") out.add((el.id ? "#" + el.id + " " : "") + a + ": " + v);
+      if (v && JP.test(v) && el.id !== "langBtn" && el.id !== "dictBtn") out.add((el.id ? "#" + el.id + " " : "") + a + ": " + v);
     }
   }
   return [...out];
@@ -51,6 +51,10 @@ async function check(name) {
 }
 
 try {
+  // 前の試験で覚えた使う文字を消す（使う文字のボタンの title は文字そのものを並べるので、上の確かめから外してある）
+  await b.goto(`${BASE}?engine=local&lang=en`);
+  await b.waitFor("document.querySelector('#font option') !== null", 60000);
+  await b.eval("localStorage.removeItem('aame.extra'); localStorage.removeItem('aame.exclude')");
   await b.goto(`${BASE}?engine=local&lang=en`);
   await b.waitFor("document.querySelector('#font option') !== null", 60000);
   log.push(`lang: ${await b.eval("document.documentElement.lang")}`);

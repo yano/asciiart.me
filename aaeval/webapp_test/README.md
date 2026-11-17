@@ -29,6 +29,9 @@
   途中で日本語に切り替えて英語に戻したあとも見る。各画面の写真を撮る（既定は build_static の serve.py、ポート 8765）
 - `node aaeval/webapp_test/share_test.mjs <出力> <画像> [--base URL]` … 共有: 共有用の画像（AA だけ・元の絵も並べる。出力フォルダに保存）、
   「X に投稿」でクリップボードに入る画像と開く URL（window.open を横取り）、日本語・英語の投稿の文
+- `node aaeval/webapp_test/dict_test.mjs <出力> <画像> [--base URL] [--engine local|server] [--addfont saitamaar]` … 使う文字の「文字を足す」
+  （見本と足せないわけ）、辞書を保存（文字数・並び・外した文字）、足した文字が AA に出るか、読み込み直しても覚えているか、× で消す、
+  辞書を読み込む（ファイルに無い文字は外し、無い文字は足す）、壊れたファイル。`--addfont saitamaar` は MS Pゴシックの無い PC の代わり
 - `node aaeval/js/i18n_check.mjs` … 画面の英語（webapp/static/i18n_en.js）に足りない文・使っていない文が無いか（ブラウザは使わない）
 
 ui_test.mjs と ui_test2.mjs は、候補が6つ・大きさを選ぶ手順が無かったころの画面用（いまの画面では動かない）。

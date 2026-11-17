@@ -304,6 +304,20 @@ button.small { padding: 2px 8px; font-size: 12px; }
 .gcell .gcount { font-size: 10px; color: var(--muted); line-height: 1; }
 .gcell.off { background: #fde4e1; border-color: #e8a49c; }
 .gcell.off .gimg { opacity: 0.3; }
+/* 文字を足す（使う文字の画面） */
+.dictadd { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 2px 16px 6px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; font-size: 13px; }
+.dictadd input { width: 21em; max-width: 100%; font: inherit; padding: 3px 6px; }
+.addpreview { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 6px; }
+.addpreview:empty { display: none; }
+.addprev { display: inline-flex; flex-direction: column; align-items: center; gap: 2px; padding: 3px 5px; border: 1px solid var(--line); border-radius: 4px; font-size: 11px; }
+.addprev .gimg { image-rendering: pixelated; }
+.addprev.ng { background: #f4f4f4; color: var(--muted); }
+.addprev .addch { font-size: 20px; line-height: 36px; }
+.gwrap { position: relative; display: inline-flex; }
+.gdel { position: absolute; top: -6px; right: -6px; width: 16px; height: 16px; padding: 0; border-radius: 50%; font-size: 11px; line-height: 14px; background: #fff; }
+.gdel:hover { background: #fde4e1; border-color: #c0392b; color: #c0392b; }
+.dictfoot button { white-space: nowrap; flex: none; }
+.dictmsg { flex: 1 1 0; min-width: 0; font-size: 12px; }
 
 /* ブラウザの中のエンジンが GPU と CPU のどちらで動いているか */
 .device { font-size: 12px; padding: 2px 8px; border-radius: 10px; background: #e8f5e9; color: #1b5e20; white-space: nowrap; }

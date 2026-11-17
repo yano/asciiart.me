@@ -7,6 +7,8 @@ import * as engine from "./engine.js";
 import { GlyphTable, Renderer, ROW_H, toText, toHtml } from "./aa.js";
 import { Compare } from "./compare.js";
 import { t, tr, list, lang, setLang } from "./i18n.js";
+import { parseDict } from "./aame/glyphs.js";
+import { dictText, glyphMaker, glyphOf } from "./addglyph.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -29,8 +31,10 @@ const ERASED_COLOR = "#9a9a9a";   // 消した線
 const LINE_ADD = 1;         // 線画の直しの値（画素ごと）: 描いた線
 const LINE_ERASE = 2;       //                             消した所
 const EXCLUDE_KEY = "aame.exclude";   // 使わない文字を覚えておく（このブラウザだけ）
+const EXTRA_KEY = "aame.extra";       // 足した文字を覚えておく（辞書の形式。このブラウザだけ）
 // 使う文字の種類（辞書の文字を Unicode の範囲で分ける。categoryOf）
 const CATEGORIES = [
+  ["added", "足した文字"],
   ["symbol", "記号"], ["hankana", "半角カナ"], ["katakana", "カタカナ"], ["hiragana", "ひらがな"],
   ["alnum", "英数字"], ["kanji", "漢字"], ["greek", "ギリシャ・ロシア文字"],
 ];
@@ -86,7 +90,10 @@ const S = {
   lineURL: null,      // サーバーに送る線画の直しの画像 {key, url}
   lineBase: new Map(),// 当てはめに使う線（直す前。"色の境界:倍率" → {w, h, mask}）
   exclude: "",        // 使わない文字（辞書の順）
-  dictGen: 0,         // 使わない文字を変えるたびに増やす（古い候補を捨てるため）
+  dictGen: 0,         // 使う文字を変えるたびに増やす（古い候補を捨てるため）
+  added: [],          // 足した文字 {ch, w, rows}（setAdded で変える）
+  addedSet: new Set(),
+  extraText: "",      // 足した文字（辞書の形式。エンジンに渡す）
 };
 
 const rkey = (i, scale) => `${i}@${scale.toFixed(2)}`;
@@ -164,6 +171,7 @@ function requestSettings() {
   const out = {};
   for (const k of SETTING_KEYS) out[k] = S.settings[k];
   out.exclude = S.exclude;
+  out.extra = S.extraText;
   return out;
 }
 
@@ -213,7 +221,7 @@ function queueResult(i, scale, front = false) {
   const job = async () => {
     try {
       if (gen !== S.gen || dg !== S.dictGen) return;
-      const r = await engine.render(S.image.id, { ...DEFAULTS, ...S.presets[i].settings, exclude: S.exclude }, null, scale);
+      const r = await engine.render(S.image.id, { ...DEFAULTS, ...S.presets[i].settings, exclude: S.exclude, extra: S.extraText }, null, scale);
       if (gen !== S.gen || dg !== S.dictGen) return;
       S.results.set(key, r);
       onResult(i, scale, r);
@@ -2164,11 +2172,19 @@ function setupShare() {
   shareTexts();
 }
 
-// ---------- 使う文字（辞書から外す文字） ----------
-// 外した文字は、候補・大きさ・仕上げ・行の候補のどれにも使わない（サーバーの辞書から外す）。
-// 空白（インクの無い文字）は外せない。選んだ文字はこのブラウザで覚える（EXCLUDE_KEY）。
+// ---------- 使う文字（辞書の文字を外す・足す） ----------
+// 外した文字は、候補・大きさ・仕上げ・行の候補のどれにも使わない（エンジンの辞書から外す）。空白（インクの無い文字）は外せない。
+// 足した文字（S.added。{ch, w, rows}）は標準の辞書の後ろに足す。形はこの PC のフォントで描く（addglyph.js。MS Pゴシックが
+// あればそれ、無ければ Saitamaar）。どちらもこのブラウザで覚える（EXCLUDE_KEY、EXTRA_KEY）。
+// 辞書のファイル（標準の辞書と同じ形式）に保存・読み込みできる。ファイルには使う文字だけを書く（外した文字は書かない）。
 
-function categoryOf(ch) {
+const BASE_DICT_URL = "dict/chrDict_20261115_utf8.txt";   // 標準の辞書（aame/worker.js の DICT_URL と同じ）
+const MAX_ADDED = 500;            // 足せる文字の数（aame/worker.js・webapp/server.py の MAX_EXTRA と同じ）
+const DICT_FILE_NAME = "asciiartme_dict.txt";
+const ADD_REASON = { have: "辞書にあります", missing: "MS Pゴシックに無い文字です", saitamaar: "この PC では描けません" };
+
+function categoryOf(ch, added = S.addedSet) {
+  if (added.has(ch)) return "added";
   const c = ch.codePointAt(0);
   const within = (a, b) => c >= a && c <= b;
   if (within(0x30, 0x39) || within(0x41, 0x5a) || within(0x61, 0x7a)
@@ -2181,40 +2197,82 @@ function categoryOf(ch) {
   return "symbol";
 }
 
-// 外せる文字（インクのある文字。辞書の順）
-function inkChars() {
+const hasInk = (g) => g.rows.some((r) => r.includes("1"));
+
+// 外せる文字（インクのある文字。標準の辞書の順、そのあと足した文字）
+function inkChars(added = S.added) {
   if (!S.table) return [];
-  return [...S.table.map.entries()].filter(([, g]) => g.rows.some(Boolean)).map(([ch]) => ch);
+  const base = [...S.table.base].filter((ch) => S.table.map.get(ch).rows.some(Boolean));
+  return base.concat(added.filter(hasInk).map((g) => g.ch));
 }
 
 // 辞書の順に並べ、外せない文字・辞書に無い文字を除いたもの
-function normalizeExclude(chars) {
+function normalizeExclude(chars, added = S.added) {
   const set = new Set(chars);
-  return inkChars().filter((ch) => set.has(ch)).join("");
+  return inkChars(added).filter((ch) => set.has(ch)).join("");
+}
+
+const extraOf = (added) => (added.length ? dictText(added) : "");
+
+// 足した文字を変える（表示の文字の表にも入れる）
+function setAdded(added) {
+  S.added = added;
+  S.addedSet = new Set(added.map((g) => g.ch));
+  S.extraText = extraOf(added);
+  S.table.setExtra(added);
+}
+
+// このブラウザで覚えた足した文字
+function loadAdded() {
+  const text = load(EXTRA_KEY);
+  if (!text) return [];
+  try {
+    const set = parseDict(text);
+    return Array.from({ length: set.size }, (_, i) => glyphOf(set, i)).filter((g) => !S.table.base.has(g.ch)).slice(0, MAX_ADDED);
+  } catch (e) {
+    return [];
+  }
+}
+
+let baseDictPromise = null;
+function baseDict() {
+  if (!baseDictPromise) {
+    baseDictPromise = fetch(BASE_DICT_URL).then((res) => {
+      if (!res.ok) throw new Error(t("文字の表を読めませんでした"));
+      return res.text();
+    }).then(parseDict);
+    baseDictPromise.catch(() => { baseDictPromise = null; });
+  }
+  return baseDictPromise;
 }
 
 function updateDictButton() {
-  const n = [...S.exclude].length;
+  const n = [...S.exclude].length, a = S.added.length;
   const b = $("dictBtn");
-  b.textContent = n ? t("使う文字（−{n}）", { n }) : t("使う文字");
-  b.classList.toggle("on", n > 0);
-  b.title = n ? t("当てはめに使わない文字が {n} 文字あります: {chars}", { n, chars: S.exclude }) : t("当てはめに使う文字を選びます（いまは辞書の文字をすべて使います）");
+  b.textContent = n || a ? t("使う文字（{d}）", { d: [a ? `+${a}` : "", n ? `−${n}` : ""].filter(Boolean).join(" ") }) : t("使う文字");
+  b.classList.toggle("on", n > 0 || a > 0);
+  const parts = [];
+  if (a) parts.push(t("足した文字が {n} 文字あります: {chars}", { n: a, chars: S.added.map((g) => g.ch).join("") }));
+  if (n) parts.push(t("当てはめに使わない文字が {n} 文字あります: {chars}", { n, chars: S.exclude }));
+  b.title = parts.length ? parts.join("\n") : t("当てはめに使う文字を選びます（いまは辞書の文字をすべて使います）");
 }
 
-// 使わない文字を変えて、いまの画面の AA を作り直す
-function applyExclude(text) {
-  text = normalizeExclude(text);
-  if (text === S.exclude) return false;
-  S.exclude = text;
-  store(EXCLUDE_KEY, text || null);
+// 使わない文字と足した文字を変えて、いまの画面の AA を作り直す
+function applyDict(exclude, added) {
+  exclude = normalizeExclude(exclude, added);
+  if (exclude === S.exclude && extraOf(added) === S.extraText) return false;
+  setAdded(added);
+  S.exclude = exclude;
+  store(EXCLUDE_KEY, exclude || null);
+  store(EXTRA_KEY, S.extraText || null);
   updateDictButton();
   S.dictGen++;
   // 候補と大きさの結果は、前の文字で作ったものなので作り直す
   jobs.bg = [];
   pending.clear();
   S.results = new Map();
-  const n = [...text].length;
-  setStatus(n ? t("{n} 文字を使わずに作り直します", { n }) : t("辞書の文字をすべて使って作り直します"));
+  const n = [...exclude].length, a = added.length;
+  setStatus(n || a ? t("使う文字を変えて作り直します（足した文字 {a}、外した文字 {n}）", { a, n }) : t("辞書の文字をすべて使って作り直します"));
   if (S.view === "presets") showPresets();
   else if (S.view === "scales") showScales();
   else if (S.view === "edit") {
@@ -2233,21 +2291,50 @@ function glyphCanvas(ch) {
   return c;
 }
 
-const dict = { draft: null, cells: new Map(), heads: [] };
+// 足す文字の形（{ch, w, rows}）を描いた canvas（当てはめに使う形そのもの。2 倍の大きさで表示する）
+function bitsCanvas(g) {
+  const c = document.createElement("canvas");
+  c.width = g.w;
+  c.height = ROW_H;
+  const ctx = c.getContext("2d");
+  ctx.fillStyle = "#fff";
+  ctx.fillRect(0, 0, c.width, c.height);
+  ctx.fillStyle = "#000";
+  g.rows.forEach((r, y) => { for (let x = 0; x < g.w; x++) if (r[x] === "1") ctx.fillRect(x, y, 1, 1); });
+  c.className = "gimg";
+  c.style.width = `${c.width * 2}px`;
+  c.style.height = `${c.height * 2}px`;
+  return c;
+}
+
+// 画面の下書き: draft は外す文字、added は足した文字。maker は文字を描くもの（addglyph.js）、preview は足す前の文字
+const dict = { draft: null, added: null, cells: new Map(), heads: [], maker: null, preview: [] };
 
 function openDict() {
   if (!S.table || !S.renderer) return;
   dict.draft = new Set(S.exclude);
+  dict.added = S.added.slice();
+  $("dictAddText").value = "";
+  $("dictMsg").textContent = "";
+  buildDict();
+  updateAddPreview();
+  $("dictDialog").showModal();
+  prepareMaker();
+}
+
+function buildDict() {
   dict.cells = new Map();
   dict.heads = [];
   const body = $("dictBody");
   body.textContent = "";
+  const added = new Map(dict.added.map((g) => [g.ch, g]));
   const cell = (ch, count = null) => {
+    const g = added.get(ch);
     const b = document.createElement("button");
     b.type = "button";
     b.className = "gcell";
-    b.title = t("{ch}（U+{code}、幅 {w}px）", { ch, code: ch.codePointAt(0).toString(16).toUpperCase().padStart(4, "0"), w: S.table.width(ch) });
-    b.append(glyphCanvas(ch));
+    b.title = t("{ch}（U+{code}、幅 {w}px）", { ch, code: ch.codePointAt(0).toString(16).toUpperCase().padStart(4, "0"), w: g ? g.w : S.table.width(ch) });
+    b.append(g ? bitsCanvas(g) : glyphCanvas(ch));
     if (count != null) {
       const k = document.createElement("span");
       k.className = "gcount";
@@ -2257,7 +2344,23 @@ function openDict() {
     b.addEventListener("click", () => toggleChars([ch], !dict.draft.has(ch)));
     if (!dict.cells.has(ch)) dict.cells.set(ch, []);
     dict.cells.get(ch).push(b);
-    return b;
+    if (!g || count != null) return b;
+    // 足した文字には「辞書から消す」を付ける
+    const wrap = document.createElement("span");
+    wrap.className = "gwrap";
+    const del = document.createElement("button");
+    del.type = "button";
+    del.className = "gdel";
+    del.textContent = "×";
+    del.title = t("辞書から消す");
+    del.addEventListener("click", () => {
+      dict.added = dict.added.filter((x) => x.ch !== ch);
+      dict.draft.delete(ch);
+      buildDict();
+      updateAddPreview();
+    });
+    wrap.append(b, del);
+    return wrap;
   };
   const section = (title, chars, counts = null, toggle = true) => {
     const sec = document.createElement("section");
@@ -2283,22 +2386,23 @@ function openDict() {
     sec.append(head, grid);
     body.append(sec);
   };
+  const all = inkChars(dict.added);
   // いまの AA で使っている文字（多い順）
   const lines = S.view === "edit" ? shown() : null;
   if (lines) {
     const counts = new Map();
-    const ink = new Set(inkChars());
+    const ink = new Set(all);
     for (const line of lines) for (const ch of line) if (ink.has(ch)) counts.set(ch, (counts.get(ch) || 0) + 1);
     const used = [...counts.keys()].sort((a, b) => counts.get(b) - counts.get(a));
     if (used.length) section(t("この AA で使っている文字（{n} 種類、多い順。数字は使っている数）", { n: used.length }), used, counts, false);
   }
-  const all = inkChars();
+  const addedSet = new Set(added.keys());
   for (const [id, label] of CATEGORIES) {
-    const chars = all.filter((ch) => categoryOf(ch) === id);
+    // 足した文字は、インクの無いもの（空白）も出す（消せるように）
+    const chars = id === "added" ? dict.added.map((g) => g.ch) : all.filter((ch) => categoryOf(ch, addedSet) === id);
     if (chars.length) section(t(label), chars);
   }
   refreshDict();
-  $("dictDialog").showModal();
 }
 
 function toggleChars(chars, exclude) {
@@ -2316,18 +2420,126 @@ function refreshDict() {
     info.textContent = t("{on} / {total} 文字を使う", { on, total: chars.length });
     button.textContent = on < chars.length ? t("すべて使う") : t("すべて外す");
   }
-  const total = inkChars().length;
-  const off = [...dict.draft].length;
+  const total = inkChars(dict.added).length;
+  const off = [...normalizeExclude([...dict.draft], dict.added)].length;
   $("dictCount").textContent = t("{total} 文字のうち {used} 文字を使う（空白はいつも使います）", { total, used: total - off });
-  const changed = normalizeExclude([...dict.draft]) !== S.exclude;
+  const changed = normalizeExclude([...dict.draft], dict.added) !== S.exclude || extraOf(dict.added) !== S.extraText;
   $("dictOk").disabled = !changed;
+}
+
+// 文字を描くフォントを決める（初めて「使う文字」を開いたとき）
+async function prepareMaker() {
+  const note = $("dictAddMode");
+  if (!dict.maker) {
+    note.textContent = t("文字を描くフォントを調べています…");
+    try {
+      const f = S.fonts.find((x) => x.id === "saitamaar" && x.file);
+      dict.maker = await glyphMaker(await baseDict(), f ? f.file : null);
+    } catch (e) {
+      console.error(e);
+      note.textContent = t("この PC では文字を足せません（MS Pゴシックも Saitamaar もありません）");
+      return;
+    }
+  }
+  note.textContent = dict.maker.mode === "mspgothic" ? t("MS Pゴシックで形を描きます（辞書と同じ形になります）。")
+    : t("この PC には MS Pゴシックが無いので、Saitamaar で形を描きます（MS Pゴシックと幅が同じ文字だけ足せます）。");
+  updateAddPreview();
+}
+
+// 打った文字を、足す前に並べて見せる（足せない文字はわけを出す）
+function updateAddPreview() {
+  const box = $("dictAddPreview");
+  box.textContent = "";
+  dict.preview = [];
+  const chars = [...new Set([...$("dictAddText").value].filter((ch) => !/[\s\p{C}]/u.test(ch)))].slice(0, 100);
+  if (dict.maker) {
+    const have = new Set([...S.table.base, ...dict.added.map((g) => g.ch)]);
+    for (const ch of chars) {
+      const g = have.has(ch) ? { ch, reason: "have" } : dict.maker.make(ch);
+      const item = document.createElement("span");
+      item.className = g.reason ? "addprev ng" : "addprev";
+      if (g.reason) {
+        const s = document.createElement("span");
+        s.className = "addch";
+        s.textContent = ch;
+        item.append(s);
+      } else {
+        item.append(bitsCanvas(g));
+        dict.preview.push(g);
+      }
+      const label = document.createElement("span");
+      label.className = "muted";
+      label.textContent = g.reason ? t(ADD_REASON[g.reason]) : t("幅 {w}px", { w: g.w });
+      item.append(label);
+      box.append(item);
+    }
+  }
+  const room = MAX_ADDED - dict.added.length;
+  $("dictAddBtn").disabled = !dict.preview.length || room <= 0;
+  if (room <= 0) $("dictMsg").textContent = t("足せる文字は {n} 文字までです", { n: MAX_ADDED });
+}
+
+function addPreviewed() {
+  const room = MAX_ADDED - dict.added.length;
+  if (!dict.preview.length || room <= 0) return;
+  dict.added = dict.added.concat(dict.preview.slice(0, room));
+  $("dictAddText").value = "";
+  buildDict();
+  updateAddPreview();
+}
+
+// 使う文字（下書き）を辞書のファイルにして保存する
+async function saveDict() {
+  const base = await baseDict();
+  const glyphs = [];
+  for (let i = 0; i < base.size; i++) if (!dict.draft.has(base.chars[i]) || !base.inked[i]) glyphs.push(glyphOf(base, i));
+  for (const g of dict.added) if (!dict.draft.has(g.ch) || !hasInk(g)) glyphs.push(g);
+  download(new Blob([dictText(glyphs)], { type: "text/plain;charset=utf-8" }), DICT_FILE_NAME);
+  $("dictMsg").textContent = t("{n} 文字の辞書を保存しました", { n: glyphs.length });
+}
+
+// 辞書のファイルを読む: 標準の辞書にある文字は使い、無い文字は足し、ファイルに無い標準の文字は外す
+async function loadDictFile(file) {
+  let set;
+  try {
+    set = parseDict(await file.text());
+  } catch (e) {
+    $("dictMsg").textContent = t("辞書のファイルとして読めませんでした");
+    return;
+  }
+  const base = await baseDict();
+  const inFile = new Set(set.chars);
+  const added = [];
+  for (let i = 0; i < set.size; i++) if (!base.has(set.chars[i]) && !added.some((g) => g.ch === set.chars[i])) added.push(glyphOf(set, i));
+  dict.added = added.slice(0, MAX_ADDED);
+  dict.draft = new Set(base.chars.filter((ch, i) => base.inked[i] && !inFile.has(ch)));
+  buildDict();
+  updateAddPreview();
+  $("dictMsg").textContent = t("「{name}」を読みました（{n} 文字。足した文字 {a}、外した文字 {x}）。「この文字で作り直す」で使います",
+    { name: file.name, n: set.size, a: dict.added.length, x: dict.draft.size })
+    + (added.length > MAX_ADDED ? " " + t("足せる文字は {n} 文字までです", { n: MAX_ADDED }) : "");
 }
 
 function setupDict() {
   $("dictBtn").addEventListener("click", openDict);
-  $("dictAll").addEventListener("click", () => toggleChars(inkChars(), false));
+  $("dictAll").addEventListener("click", () => toggleChars(inkChars(dict.added), false));
+  $("dictAddText").addEventListener("input", updateAddPreview);
+  // Enter で足す（フォームの送信〈ダイアログが閉じる〉はさせない）
+  $("dictAddText").addEventListener("keydown", (e) => {
+    if (e.key !== "Enter" || e.isComposing) return;
+    e.preventDefault();
+    addPreviewed();
+  });
+  $("dictAddBtn").addEventListener("click", addPreviewed);
+  $("dictSave").addEventListener("click", () => saveDict().catch(showError));
+  $("dictLoad").addEventListener("click", () => $("dictFile").click());
+  $("dictFile").addEventListener("change", () => {
+    const f = $("dictFile").files[0];
+    $("dictFile").value = "";
+    if (f) loadDictFile(f).catch(showError);
+  });
   $("dictDialog").addEventListener("close", () => {
-    if ($("dictDialog").returnValue === "ok" && dict.draft) applyExclude([...dict.draft].join(""));
+    if ($("dictDialog").returnValue === "ok" && dict.draft) applyDict([...dict.draft].join(""), dict.added);
     dict.draft = null;
   });
 }
@@ -2604,6 +2816,7 @@ async function main() {
     S.table = new GlyphTable(glyphs);
     S.renderer = new Renderer(S.table);
     S.presets = presets;
+    setAdded(loadAdded());
     S.exclude = normalizeExclude(load(EXCLUDE_KEY) || "");
   } catch (e) {
     showError(e);

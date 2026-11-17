@@ -48,6 +48,21 @@ class GlyphSet:
             return self
         return GlyphSet([self.chars[i] for i in keep], self.widths[keep], self.bitmaps[keep])
 
+    def plus(self, other):
+        """other の文字のうち、この辞書に無いものを後ろに足した辞書（足した文字。同じ点なら元の文字が
+        先に選ばれる）。足すものが無ければ自分を返す。"""
+        seen = set(self.chars)
+        add = []
+        for i, ch in enumerate(other.chars):
+            if ch not in seen:
+                seen.add(ch)
+                add.append(i)
+        if not add:
+            return self
+        return GlyphSet(self.chars + [other.chars[i] for i in add],
+                        np.concatenate([self.widths, other.widths[add]]),
+                        np.concatenate([self.bitmaps, other.bitmaps[add]]))
+
     @classmethod
     def from_chr_list(cls, chr_list):
         """AA_ChrTool.ChrTool.chrDict（Chr のリスト）から作る。"""
@@ -61,17 +76,29 @@ def load(path=DICT_FILE):
     """辞書のファイルを読む。形式は AA_ChrTool.getChrListFrom18Line と同じ:
     1行目が文字数、そのあと文字ごとに「文字」「幅」「18 行の 0/1（1 がインク）」。
     """
+    return parse(Path(path).read_text(encoding="utf-8"))
+
+
+def parse(text):
+    """辞書の形式の文字列を読む（load の中身。画面で足した文字はこの形で届く）。
+    行が足りないものや、幅が MIN_W〜MAX_W に無い文字は ValueError にする。"""
     # splitlines は改行以外の制御文字でも切るので使わない（文字の行に何が来てもよいように）
-    lines = Path(path).read_text(encoding="utf-8").replace("\r\n", "\n").split("\n")
+    lines = text.replace("\r\n", "\n").split("\n")
     if lines and lines[0].startswith("﻿"):
         lines[0] = lines[0][1:]
     n = int(lines[0])
+    if n < 0 or len(lines) < 1 + n * (2 + ROW_H):
+        raise ValueError("辞書の形式ではありません")
     chars, widths = [], []
     bitmaps = np.zeros((n, ROW_H, MAX_W), bool)
     at = 1
     for i in range(n):
+        if not lines[at]:
+            raise ValueError("辞書の形式ではありません")
         chars.append(lines[at][0])
         w = int(lines[at + 1].strip())
+        if not MIN_W <= w <= MAX_W:
+            raise ValueError("辞書の形式ではありません")
         widths.append(w)
         for y in range(ROW_H):
             row = lines[at + 2 + y].ljust(w, "0")
