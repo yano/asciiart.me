@@ -4,6 +4,15 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>asciiart.me</title>
+<meta name="description" content="画像から AA（アスキーアート）を作る Web アプリ。ブラウザだけで動き、画像はどこにも送りません。 / Turn pictures into Japanese ASCII art (AA) in your browser.">
+<!-- 共有したときのリンクの表示（X、Discord など） -->
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="panzersoft">
+<meta property="og:title" content="asciiart.me — 画像から AA を作る / Pictures to ASCII art">
+<meta property="og:description" content="画像から AA（アスキーアート）を作る Web アプリ。ブラウザだけで動きます。 / Turn pictures into Japanese ASCII art (AA) in your browser.">
+<meta property="og:url" content="https://panzersoft.com/asciiartme/">
+<meta property="og:image" content="https://panzersoft.com/images/asciiartme/asciiartme_main.jpg">
+<meta name="twitter:card" content="summary_large_image">
 <link rel="stylesheet" href="style.css">
 <script>
 // 英語で表示するときは、i18n.js が訳し終えるまで隠す（日本語が一瞬見えないように。決め方は i18n.js の detect と同じ）
@@ -261,6 +270,18 @@
         </div>
         <p class="note" id="htmlNote"></p>
         <p class="note" id="info"></p>
+      </section>
+
+      <section>
+        <h2>共有</h2>
+        <div class="row buttons">
+          <button id="share" class="primary" hidden title="この PC やスマホの共有の機能で、AA の画像と文を送ります（X のアプリなど）">共有…</button>
+          <button id="shareX" title="AA の画像をコピーして、X の投稿の画面を開きます（画像は貼り付けて足します）">X に投稿</button>
+          <button id="shareSave">共有用の画像を保存</button>
+        </div>
+        <label class="check"><input id="shareOrig" type="checkbox"> 元の絵も並べる</label>
+        <p class="note" id="shareNote"></p>
+        <p class="note">元の絵を並べるのは、自分で描いた絵など、載せてよい絵のときだけにしてください。</p>
       </section>
     </aside>
   </section>
