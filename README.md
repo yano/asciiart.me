@@ -222,7 +222,7 @@ python -m aaeval.check_render miku.html                 # verify the renderer ag
 
 ## Demo
 
-http://asciiart.me/
+https://panzersoft.com/asciiartme/
 
 ## License
 MIT
