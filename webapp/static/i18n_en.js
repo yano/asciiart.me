@@ -265,6 +265,22 @@ export const EN = {
   "文字の形: {label}（{license}、{source}）。AA に使う文字だけを埋め込んでいます":
     "Glyphs: {label} ({license}, {source}). Only the characters used in the AA are embedded",
 
+  // ---------- 共有 ----------
+  "共有": "Share",
+  "共有…": "Share…",
+  "この PC やスマホの共有の機能で、AA の画像と文を送ります（X のアプリなど）": "Send the AA image and a message with your device's share menu (the X app, for example)",
+  "X に投稿": "Post on X",
+  "AA の画像をコピーして、X の投稿の画面を開きます（画像は貼り付けて足します）": "Copies the AA image and opens X's post screen (paste the image there)",
+  "共有用の画像を保存": "Save the image",
+  "元の絵も並べる": "Show the original picture too",
+  "元の絵を並べるのは、自分で描いた絵など、載せてよい絵のときだけにしてください。": "Only show the original picture if you may post it (your own drawing, for example).",
+  "画像からAA（アスキーアート）を作りました。ブラウザだけで作れます → {url} #asciiartme #ASCIIArt #アスキーアート":
+    "I made ASCII art (AA) from a picture. You can make one right in your browser → {url} #asciiartme #ASCIIArt",
+  "投稿の文: {text}": "Message: {text}",
+  "画像をコピーしました。開いた X の画面で貼り付けて（Ctrl+V）、画像を足してください": "The image is copied. Paste it (Ctrl+V) into the X screen that opened",
+  "画像をコピーできませんでした。「共有用の画像を保存」で保存して、X の画面で画像を足してください":
+    "Could not copy the image. Save it with \"Save the image\" and add it on the X screen",
+
   // ---------- 使う文字 ----------
   "閉じる": "Close",
   "文字を押すと、使う・使わないが切り替わります。外した文字（薄い赤）は AA に使いません（候補、大きさ、仕上げ、行の候補のすべて）。線の上に丸い文字が当たるときなどに外してください。選んだ文字はこのブラウザで覚えます。":

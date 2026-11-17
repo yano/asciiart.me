@@ -2068,6 +2068,102 @@ function setupExport() {
   });
 }
 
+// ---------- 共有 ----------
+// AA の画像（表示フォントで描く。「元の絵も並べる」なら左に元の絵）を、端末の共有の機能（Web Share）か、
+// X（画像をクリップボードにコピーして、投稿の画面を開く。intent の URL では画像を渡せないので貼り付けてもらう）で送る。
+
+const SHARE_URL = "https://panzersoft.com/asciiartme/";
+const SHARE_CREDIT = "asciiart.me  ·  panzersoft.com/asciiartme";
+
+function shareText() {
+  return t("画像からAA（アスキーアート）を作りました。ブラウザだけで作れます → {url} #asciiartme #ASCIIArt #アスキーアート", { url: SHARE_URL });
+}
+
+// 端末の共有の機能で画像を送れるか（Windows・Android・iPhone の Chrome / Edge / Safari など）
+function canShareFiles() {
+  try {
+    return !!navigator.canShare && navigator.canShare({ files: [new File([""], "aa.png", { type: "image/png" })] });
+  } catch (e) {
+    return false;
+  }
+}
+
+// 共有する画像。白地に AA（と元の絵）、右下に小さく asciiart.me と URL
+function shareCanvas() {
+  const lines = shown();
+  if (!lines || !S.dims) return null;
+  const aa = S.renderer.draw(lines, { minWidth: S.dims.width });
+  const orig = $("shareOrig").checked && S.image && S.image.img;
+  const PAD = 16, GAP = 16, FOOT = 26;
+  const ow = orig ? S.dims.width : 0, oh = orig ? S.dims.height : 0;
+  const c = document.createElement("canvas");
+  c.width = PAD * 2 + aa.width + (orig ? ow + GAP : 0);
+  c.height = PAD + Math.max(aa.height, oh) + FOOT;
+  const ctx = c.getContext("2d");
+  ctx.fillStyle = "#fff";
+  ctx.fillRect(0, 0, c.width, c.height);
+  if (orig) {
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(S.image.img, PAD, PAD, ow, oh);
+  }
+  ctx.drawImage(aa, PAD + (orig ? ow + GAP : 0), PAD);
+  ctx.fillStyle = "#9a9a9a";
+  ctx.font = "12px sans-serif";
+  ctx.textAlign = "right";
+  ctx.fillText(SHARE_CREDIT, c.width - PAD, c.height - 9);
+  return c;
+}
+
+function canvasBlob(c) {
+  return new Promise((resolve, reject) => c.toBlob((b) => (b ? resolve(b) : reject(new Error("PNG"))), "image/png"));
+}
+
+const shareName = () => `${S.image ? S.image.name : "aa"}_aa_share.png`;
+
+async function shareNative() {
+  const c = shareCanvas();
+  if (!c) return;
+  try {
+    const file = new File([await canvasBlob(c)], shareName(), { type: "image/png" });
+    await navigator.share({ files: [file], text: shareText() });
+  } catch (e) {
+    if (e.name !== "AbortError") showError(e);   // AbortError: 共有の画面を閉じた
+  }
+}
+
+async function shareX() {
+  const c = shareCanvas();
+  if (!c) return;
+  let copied = false;
+  try {
+    // 先にコピーする（X の画面を開くとこのページがフォーカスを失い、コピーできなくなる）
+    await navigator.clipboard.write([new ClipboardItem({ "image/png": canvasBlob(c) })]);
+    copied = true;
+  } catch (e) {
+    console.error(e);
+  }
+  window.open(`https://x.com/intent/post?text=${encodeURIComponent(shareText())}`, "_blank", "noopener");
+  setStatus(copied ? t("画像をコピーしました。開いた X の画面で貼り付けて（Ctrl+V）、画像を足してください")
+    : t("画像をコピーできませんでした。「共有用の画像を保存」で保存して、X の画面で画像を足してください"), !copied);
+}
+
+async function shareSave() {
+  const c = shareCanvas();
+  if (c) download(await canvasBlob(c), shareName());
+}
+
+function shareTexts() {
+  $("shareNote").textContent = t("投稿の文: {text}", { text: shareText() });
+}
+
+function setupShare() {
+  $("share").hidden = !canShareFiles();
+  $("share").addEventListener("click", shareNative);
+  $("shareX").addEventListener("click", shareX);
+  $("shareSave").addEventListener("click", () => shareSave().catch(showError));
+  shareTexts();
+}
+
 // ---------- 使う文字（辞書から外す文字） ----------
 // 外した文字は、候補・大きさ・仕上げ・行の候補のどれにも使わない（サーバーの辞書から外す）。
 // 空白（インクの無い文字）は外せない。選んだ文字はこのブラウザで覚える（EXCLUDE_KEY）。
@@ -2469,6 +2565,7 @@ function switchLang() {
   fontLabels();
   updateBaseOptions();
   toolTexts();
+  shareTexts();
   setStatus("");
   if (S.prep && S.orig) {
     placeCropBox();
@@ -2496,6 +2593,7 @@ async function main() {
   setupPainting();
   setupText();
   setupExport();
+  setupShare();
   setupDict();
   setTool("none");
   syncControls();

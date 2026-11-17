@@ -128,7 +128,10 @@ A browser front end for `aame`:
    such as a nose; the lines the matcher uses are shown under the AA), edit the text directly,
    undo / redo or drop all the edits, then copy or save it as text, PNG or HTML. The HTML comes
    in two versions: plain MS PGothic, or with the display font embedded (only the glyphs the AA
-   uses, a few kB), which looks the same everywhere and at any zoom.
+   uses, a few kB), which looks the same everywhere and at any zoom. Share sends a picture of the
+   AA (optionally next to the original) with the device's share menu, or copies it and opens X's
+   post screen with a short message, a link and hashtags (X's link cannot carry the image, so
+   it is pasted there).
 
 "Characters" (使う文字) in the top bar chooses which glyphs the AA may use: switch whole
 groups (symbols, half-width kana, katakana, hiragana, letters and digits, kanji, Greek and
