@@ -86,6 +86,14 @@ LOCAL_FILE = re.compile(r"""(["'])((?:\.{1,2}/)?[\w\-./]+\.(?:js|json|txt))\1"""
 HTML_REF = re.compile(r"""((?:src|href)=")([\w\-./]+\.(?:js|css))(")""")
 
 
+def rewrite(path, pattern, repl):
+    """文字列を置き換える（改行は元のまま）"""
+    with open(path, encoding="utf-8", newline="") as f:
+        s = f.read()
+    with open(path, "w", encoding="utf-8", newline="") as f:
+        f.write(pattern.sub(repl, s))
+
+
 def stamp(out):
     """プログラムとデータの URL に ?v=<版> を付ける。
 
@@ -100,11 +108,8 @@ def stamp(out):
     version = h.hexdigest()[:10]
     for p in files:
         if p.suffix == ".js":
-            s = p.read_text(encoding="utf-8")
-            p.write_text(LOCAL_FILE.sub(lambda m: f"{m[1]}{m[2]}?v={version}{m[1]}", s), encoding="utf-8", newline="")
-    index = out / "index.html"
-    s = index.read_text(encoding="utf-8")
-    index.write_text(HTML_REF.sub(lambda m: f"{m[1]}{m[2]}?v={version}{m[3]}", s), encoding="utf-8", newline="")
+            rewrite(p, LOCAL_FILE, lambda m: f"{m[1]}{m[2]}?v={version}{m[1]}")
+    rewrite(out / "index.html", HTML_REF, lambda m: f"{m[1]}{m[2]}?v={version}{m[3]}")
     return version
 
 
