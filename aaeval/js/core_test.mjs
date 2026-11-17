@@ -15,7 +15,7 @@ const opt = (name, def) => { const i = args.indexOf(name); return i >= 0 ? args[
 const OUT = opt("--out", "out/js_core");
 const ONLY = opt("--only", null);
 
-const glyphs = parseDict(readFileSync("chrDict_20261115_utf8.txt", "utf8"));
+const glyphs = parseDict(readFileSync("chrDict_20261117_utf8.txt", "utf8"));
 const index = JSON.parse(readFileSync(join(OUT, "index.json"), "utf8"));
 const load = (name) => loadNpy(join(OUT, name));
 

@@ -82,7 +82,8 @@ try {
   const g = parse(saved.text);
   writeFileSync(join(out, saved.name), saved.text, "utf8");
   log.push(`保存: ${saved.name} ${g.length} 文字、最後の 5 文字 ${g.slice(-5).map((x) => `${x.ch}(${x.w})`).join(" ")}`);
-  expect(g.length === 551 - 1 + [...ADDED].length, "保存した文字数 = 551 − 1 + 足した文字");
+  // 標準の文字 = インクのある文字 + 空白 2 つ
+  expect(g.length === ink0 + 2 - 1 + [...ADDED].length, "保存した文字数 = 標準の文字 − 1 + 足した文字");
   expect(g.slice(-[...ADDED].length).map((x) => x.ch).join("") === ADDED, "足した文字が最後に並ぶ");
   expect(!g.some((x) => x.ch === off), "外した文字は書かない");
   await b.shot(join(out, "2_dialog.png"));

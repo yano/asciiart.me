@@ -205,6 +205,7 @@ body.dragging .drop, body.dragging .stage-wrap { border-color: var(--accent); ba
 .stage.drawing .paint { cursor: crosshair; }
 .lines { pointer-events: none; opacity: 0.6; }
 .stage.rowtool .paint { cursor: pointer; }
+.stage.shadetool .paint { cursor: pointer; }
 .marks { position: absolute; left: -9px; top: 0; width: 5px; height: 100%; pointer-events: none; }
 .mark { position: absolute; left: 0; width: 5px; background: #e8730c; border-radius: 2px; }
 .rowband { position: absolute; left: 0; right: 0; pointer-events: none; }
@@ -257,6 +258,12 @@ body.dragging .drop, body.dragging .stage-wrap { border-color: var(--accent); ba
 .tools button[data-v=less][aria-checked=true] { background: #2b6de0; }
 .tools button[data-v=erase][aria-checked=true] { background: #5f5f5a; }
 .tools button[data-v=draw][aria-checked=true] { background: #0a9a48; }
+.tools button[data-v=dense][aria-checked=true], .tools button[data-v=sparse][aria-checked=true] { background: #c9424a; }
+/* 陰影の模様（MS Pゴシックの幅で見せる） */
+.tools .pat, .shadechars button { font-family: "ＭＳ Ｐゴシック", "MS PGothic", "Saitamaar", sans-serif; letter-spacing: 0; }
+.tools .pat { margin-right: 5px; }
+.shadechars button { min-width: 2.2em; }
+.shadepanel .row { margin: 4px 0; }
 
 /* 行を直す */
 .rowhead { display: flex; align-items: center; gap: 6px; margin: 4px 0 6px; }

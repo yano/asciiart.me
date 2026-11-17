@@ -11,7 +11,7 @@ import { loadNpy } from "./npy.mjs";
 
 const args = process.argv.slice(2);
 const OUT = args.includes("--out") ? args[args.indexOf("--out") + 1] : "out/js_session";
-const glyphs = parseDict(readFileSync("chrDict_20261115_utf8.txt", "utf8"));
+const glyphs = parseDict(readFileSync("chrDict_20261117_utf8.txt", "utf8"));
 const index = JSON.parse(readFileSync(join(OUT, "index.json"), "utf8"));
 const L = (name) => loadNpy(join(OUT, `${name}.npy`));
 const { w, h } = index;

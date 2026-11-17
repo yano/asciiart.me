@@ -12,7 +12,7 @@ const STATIC = "webapp/static";
 const UI_FILES = ["app.js", "compare.js", "aa.js", "addglyph.js", "engine.js", "engine_local.js", "engine_server.js"];
 const ENGINE_FILES = readdirSync(join(STATIC, "aame")).filter((f) => f.endsWith(".js")).map((f) => `aame/${f}`);
 // 訳さない日本語（フォントの名前、文字の幅を測る字など）
-const KEEP = new Set(["ＭＳ Ｐゴシック", "あ", "ミ", "日本語", "Language / 言語"]);
+const KEEP = new Set(["ＭＳ Ｐゴシック", "あ", "ミ", "日本語", "Language / 言語", "三"]);   // 三: 陰影の文字のボタン
 const JP = /[぀-ヿ一-鿿]/;
 
 const read = (f) => readFileSync(join(STATIC, f), "utf8");
@@ -51,7 +51,9 @@ function literals(src) {
 // HTML の文字と属性（index.html と compare.js の部品の HTML）
 function htmlTexts(html) {
   const out = [];
-  const body = html.replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>|<!--[\s\S]*?-->/g, "");
+  // data-i18n のある要素の文字は、data-i18n のキーで訳す（文字そのものは見ない）
+  const body = html.replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>|<!--[\s\S]*?-->/g, "")
+    .replace(/(<[^>]*\sdata-i18n="[^"]*"[^>]*>)[^<]*/g, "$1");
   for (const m of body.matchAll(/>([^<]+)</g)) {
     const s = m[1].trim();
     if (s && JP.test(s)) out.push(s);
