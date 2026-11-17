@@ -41,6 +41,9 @@ button.ghost { background: transparent; }
 button.held { background: var(--text); color: #fff; }
 button.link { border: none; padding: 0; color: var(--accent); background: none; text-decoration: underline; }
 
+/* 英語で表示するとき、訳し終えるまで隠す（index.html、i18n.js） */
+.i18n-wait body { visibility: hidden; }
+
 /* 上の帯 */
 .top {
   display: flex;
@@ -54,7 +57,8 @@ button.link { border: none; padding: 0; color: var(--accent); background: none; 
 .top h1 { font-size: 17px; margin: 0 8px 0 0; }
 .top h1 small { font-weight: normal; color: var(--muted); font-size: 13px; margin-left: 4px; }
 .hint { color: var(--muted); font-size: 12px; }
-.status { margin-left: auto; color: var(--muted); font-size: 13px; }
+/* 状態の文は残りの幅に収め、長いときは中で折り返す（帯の項目を次の行に押し出さない） */
+.status { flex: 1 1 0; min-width: 160px; text-align: right; color: var(--muted); font-size: 13px; line-height: 1.35; }
 .localnote { display: flex; align-items: center; gap: 5px; color: var(--muted); font-size: 11px; line-height: 1.3; }
 .localnote svg { width: 14px; height: 14px; fill: currentColor; flex: none; }
 .github { display: flex; color: var(--text); opacity: 0.75; }

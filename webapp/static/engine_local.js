@@ -1,6 +1,8 @@
 // ブラウザの中で動くエンジン（段階3）。仕事は Worker（aame/worker.js）でする。画面は engine.js を通して使う。
 // 関数の形はサーバーのエンジン（engine_server.js）と同じ。画像の URL を返す関数は Promise を返す。
 
+import { t } from "./i18n.js";
+
 export const kind = "local";
 
 const worker = new Worker(new URL("./aame/worker.js", import.meta.url), { type: "module" });
@@ -23,7 +25,7 @@ worker.onmessage = (ev) => {
   else p.reject(new Error(m.error));
 };
 worker.onerror = (ev) => {
-  const err = new Error(`エンジンを動かせませんでした（${ev.message || "Worker のエラー"}）`);
+  const err = new Error(t("エンジンを動かせませんでした（{msg}）", { msg: ev.message || t("Worker のエラー") }));
   for (const p of waiting.values()) p.reject(err);
   waiting.clear();
 };
@@ -43,7 +45,7 @@ export function setProgressHandler(fn) {
 
 export async function glyphs() {
   const res = await fetch("glyphs.json");
-  if (!res.ok) throw new Error("文字の表を読めませんでした");
+  if (!res.ok) throw new Error(t("文字の表を読めませんでした"));
   return res.json();
 }
 
@@ -58,9 +60,9 @@ export const rowOptions = (id, row, settings, paint = null, scale = 1, current =
 export async function fontSubset(fontId) {
   const res = await fetch("fonts.json");
   const info = (await res.json()).fonts.find((f) => f.id === fontId && f.file);
-  if (!info) throw new Error("そのフォントは埋め込めません");
+  if (!info) throw new Error(t("そのフォントは埋め込めません"));
   const font = await fetch(info.file);
-  if (!font.ok) throw new Error(`フォント「${info.label}」のファイルがありません`);
+  if (!font.ok) throw new Error(t("フォント「{label}」のファイルがありません", { label: info.label }));
   return font.blob();
 }
 

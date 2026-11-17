@@ -3,6 +3,8 @@
 // 図を押すと表示する位置を止めるので、ほかの候補の図にマウスを移すと、同じ所を見比べられる。
 // 候補ごとに大きさが違ってもよい（位置は図の幅・高さに対する割合で持つ）。
 
+import { t, translateDOM } from "./i18n.js";
+
 export class Compare {
   // root: 部品を入れる要素。onChoose(key): 「これにする」が押されたとき
   constructor(root, { onChoose }) {
@@ -27,6 +29,7 @@ export class Compare {
         </div>
         <div class="lwrap"><canvas class="lcanvas"></canvas><div class="lwait" hidden>作っています…</div></div>
       </div>`;
+    translateDOM(root);   // 言葉を切り替えたときは、index.html の文と一緒に訳し直す
     this.thumbs = root.querySelector(".thumbs");
     this.canvas = root.querySelector(".lcanvas");
     this.wrap = root.querySelector(".lwrap");
@@ -77,8 +80,10 @@ export class Compare {
     card.className = "ccard";
     card.innerHTML = '<div class="chead"><span class="cname"></span><span class="ctime"></span></div>'
       + '<div class="cnote"></div>'
-      + '<div class="cthumb"><canvas></canvas><div class="cview" hidden></div><div class="cwait">作っています…</div></div>'
-      + '<button class="cgo">これにする</button>';
+      + '<div class="cthumb"><canvas></canvas><div class="cview" hidden></div><div class="cwait"></div></div>'
+      + '<button class="cgo"></button>';
+    card.querySelector(".cwait").textContent = t("作っています…");
+    card.querySelector(".cgo").textContent = t("これにする");
     it.card = card;
     it.thumb = card.querySelector(".cthumb canvas");
     it.view = card.querySelector(".cview");

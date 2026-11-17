@@ -130,11 +130,18 @@ A browser front end for `aame`:
    in two versions: plain MS PGothic, or with the display font embedded (only the glyphs the AA
    uses, a few kB), which looks the same everywhere and at any zoom.
 
-"使う文字" (characters to use) in the top bar chooses which glyphs the AA may use: switch whole
+"Characters" (使う文字) in the top bar chooses which glyphs the AA may use: switch whole
 groups (symbols, half-width kana, katakana, hiragana, letters and digits, kanji, Greek and
 Cyrillic) or single characters off, for example round letters that land on lines. The characters
 the current AA uses are listed first, most used first. Spaces are always used. The choice is kept
 in the browser and applies to the candidates, the sizes, the finished AA and the row alternatives.
+
+The interface is in Japanese and English. It follows the browser's language (Japanese for `ja`,
+English otherwise); the button at the top right switches it (the choice is kept in the browser),
+and `?lang=ja` or `?lang=en` in the URL picks one. The English strings are in
+`webapp/static/i18n_en.js`, keyed by the Japanese text: `node aaeval/js/i18n_check.mjs` lists the
+missing and unused ones, and `aaeval/webapp_test/i18n_test.mjs` goes through every step in English
+and reports any Japanese left on the screen.
 
 The image never leaves your PC: the server runs locally and the browser only talks to it.
 The same page also runs without the server, entirely in the browser (see Browser version below).
