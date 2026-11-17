@@ -184,6 +184,8 @@ needs https or localhost for WebGPU. Without WebGPU it runs on the CPU, which is
 `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: require-corp` (as
 `serve.py` and `webapp.server` do) so that it can use several threads. Use a recent Chrome or Edge.
 The HTML with the embedded display font holds the whole font file (about 1 MB) instead of a subset.
+`build_static` adds `?v=<hash of the files>` to the URLs of the scripts and data (index.html is always
+reloaded), so that browsers which keep scripts for hours never mix the files of two versions.
 
 On an RTX 3090 (800 px AA): four candidates in about 12 s, four more sizes in about 15 s (the server
 with CUDA: 8 s and 10 s). The AA differs from the server's in about 1 row in 12 (GPU rounding).
