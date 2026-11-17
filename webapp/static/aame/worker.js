@@ -40,20 +40,39 @@ async function glyphSet() {
   return fullGlyphs;
 }
 
+// 使う辞書: 標準の辞書に、足した文字（extra。辞書の形式の文字列）を足し、使わない文字（exclude）を外したもの。
+// 同じ組なら同じ GlyphSet を返す（当てはめの Worker が辞書ごとに覚えるため）。
 const glyphSets = new Map();
-async function glyphsWithout(exclude) {
-  const full = await glyphSet();
-  const key = Array.from(new Set(Array.from(exclude || ""))).filter((ch) => full.has(ch)).sort().join("");
-  if (!key) return full;
+const MAX_EXTRA = 500;        // 足せる文字の数
+function remembered(key, make) {
   let g = glyphSets.get(key);
   if (!g) {
-    g = full.without(key);
+    g = make();
     glyphSets.set(key, g);
     while (glyphSets.size > MAX_GLYPH_SETS) glyphSets.delete(glyphSets.keys().next().value);
   }
   glyphSets.delete(key);
   glyphSets.set(key, g);
   return g;
+}
+
+async function glyphsFor(exclude, extra) {
+  let full = await glyphSet();
+  if (extra) {
+    full = remembered(`+${extra}`, () => {
+      let added;
+      try {
+        added = parseDict(extra);
+      } catch (e) {
+        throw new Error("足した文字の辞書が読めませんでした");
+      }
+      if (added.size > MAX_EXTRA) throw new Error(`足せる文字は ${MAX_EXTRA} 文字までです`);
+      return fullGlyphs.plus(added);
+    });
+  }
+  const drop = Array.from(new Set(Array.from(exclude || ""))).filter((ch) => full.has(ch)).sort().join("");
+  if (!drop) return full;
+  return remembered(`-${drop}+${extra || ""}`, () => full.without(drop));
 }
 
 // 画面から渡される設定（engine_local.js）。cpu: GPU があっても CPU で動かす（試験用）
@@ -332,7 +351,7 @@ const api = {
   async render(id, settings, paint, scale, edit) {
     const e = sized(entry(id), scale);
     const st = await options(settings, paint, edit);
-    const glyphs = await glyphsWithout(settings.exclude);
+    const glyphs = await glyphsFor(settings.exclude, settings.extra);
     const t = performance.now();
     const s = await e.session(scale);
     const lines = await s.render(st, glyphs);
@@ -344,7 +363,7 @@ const api = {
   async rowOptions(id, row, settings, paint, scale, current, edit) {
     const e = sized(entry(id), scale);
     const st = await options(settings, paint, edit);
-    const glyphs = await glyphsWithout(settings.exclude);
+    const glyphs = await glyphsFor(settings.exclude, settings.extra);
     const t = performance.now();
     const s = await e.session(scale);
     if (!(row >= 0 && row < s.rows)) throw new Error("行の番号が範囲の外です");

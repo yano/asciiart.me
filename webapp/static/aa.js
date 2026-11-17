@@ -30,6 +30,16 @@ export class GlyphTable {
     this.map = new Map();
     this.fallback = new Map();
     for (const [ch, w, x0, y0, rows] of data.glyphs) this.map.set(ch, { w, x0, y0, rows });
+    this.base = new Set(this.map.keys());
+  }
+
+  // 「使う文字」で足した文字（{ch, w, rows}。rows は 18 行の "0"/"1"）を表に入れる。前に足した文字は除く
+  setExtra(glyphs) {
+    for (const ch of [...this.map.keys()]) if (!this.base.has(ch)) this.map.delete(ch);
+    for (const g of glyphs) {
+      if (this.map.has(g.ch)) continue;
+      this.map.set(g.ch, { w: g.w, x0: 0, y0: 0, rows: g.rows.map((r) => [...r].reduce((bits, v, x) => (v === "1" ? bits | (1 << x) : bits), 0)) });
+    }
   }
 
   has(ch) {

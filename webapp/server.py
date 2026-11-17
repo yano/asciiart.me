@@ -46,6 +46,7 @@ from PIL import Image, ImageOps
 from pydantic import BaseModel, Field
 
 from aame import candidates, convert, cost, models, prep
+from aame import glyphs as glyph_file
 from aame.glyphs import DICT_FILE
 from aame.lineart import canvas_size
 from aame.session import Session
@@ -56,7 +57,8 @@ MAX_SCALES = 8                  # 1枚の画像につき覚えておく大きさ
 MAX_UPLOAD = 30 * 1024 * 1024   # 受け付ける画像の大きさ（バイト）
 MAX_SIDE = 2048                 # 扱う画像と AA の長辺の上限（px）。大きいほど当てはめに時間がかかる
 MAX_SUBSET = 200_000            # フォントから抜き出すときに受け付ける文字数
-MAX_GLYPH_SETS = 4              # 覚えておく「文字を外した辞書」の数（1つで 20MB ほど使う）
+MAX_GLYPH_SETS = 4              # 覚えておく「文字を外した・足した辞書」の数（1つで 20MB ほど使う）
+MAX_EXTRA = 500                 # 画面で足せる文字の数
 # 画面に出す候補（candidates.PRESETS の名前と、画面での名前）。描き込みの少ない順
 WEB_PRESETS = [
     ("sparse", "控えめ"),
@@ -110,7 +112,8 @@ class Entry:
 class RenderRequest(BaseModel):
     """Session.render に渡す設定。paint は塗り重ねた段階の画像（灰色の PNG の data URL。
     aame.regions.paint_weight）。edit は線画の直し（PNG の data URL。赤が描いた線、緑が消した所。
-    aame.lineart.edit_masks）。exclude は使わない文字（空白は外せない）。
+    aame.lineart.edit_masks）。exclude は使わない文字（空白は外せない）。extra は画面で足した文字
+    （辞書の形式の文字列。標準の辞書の後ろに足す）。
     scale は AA の大きさの倍率（1 で前処理で決めた大きさ）。"""
     scale: float = Field(1.0, ge=0.5, le=1.6)
     lam: float = Field(2.0, ge=0.5, le=6.0)
@@ -123,6 +126,7 @@ class RenderRequest(BaseModel):
     paint: Optional[str] = None
     edit: Optional[str] = None
     exclude: str = Field("", max_length=2000)
+    extra: str = Field("", max_length=MAX_EXTRA * 400)
 
 
 class RowRequest(RenderRequest):
@@ -183,26 +187,43 @@ def decode_mask(url, what="塗った所"):
         raise HTTPException(400, f"{what}の画像が読めませんでした")
 
 
-_glyph_sets = OrderedDict()     # 使わない文字（並べ替えたもの）→ その文字を外した辞書
+_glyph_sets = OrderedDict()     # (足した文字, 使わない文字) → その辞書
 
 
-def glyphs_without(exclude):
-    """使わない文字を外した辞書（無ければ None = 標準の辞書）。_engine を持って呼ぶこと。
-
-    同じ文字の組なら同じ GlyphSet を返す（aame.cost が辞書ごとに文字側の量を覚えるため）。
-    古いものは忘れ、覚えた量も捨てる。"""
-    full = convert.glyph_set()
-    key = "".join(sorted(set(exclude) & set(full.chars)))
-    if not key:
-        return None
+def _remembered(key, make):
     g = _glyph_sets.get(key)
     if g is None:
-        g = full.without(key)
+        g = make()
         _glyph_sets[key] = g
         while len(_glyph_sets) > MAX_GLYPH_SETS:
             cost.forget(_glyph_sets.popitem(last=False)[1])
     _glyph_sets.move_to_end(key)
     return g
+
+
+def _with_extra(full, extra):
+    try:
+        added = glyph_file.parse(extra)
+    except ValueError:
+        raise HTTPException(400, "足した文字の辞書が読めませんでした")
+    if len(added) > MAX_EXTRA:
+        raise HTTPException(400, f"足せる文字は {MAX_EXTRA} 文字までです")
+    return full.plus(added)
+
+
+def glyphs_for(exclude, extra=""):
+    """標準の辞書に足した文字（extra。辞書の形式）を足し、使わない文字を外した辞書（どちらも無ければ
+    None = 標準の辞書）。_engine を持って呼ぶこと。
+
+    同じ組なら同じ GlyphSet を返す（aame.cost が辞書ごとに文字側の量を覚えるため）。
+    古いものは忘れ、覚えた量も捨てる。"""
+    full = convert.glyph_set()
+    if extra:
+        full = _remembered(("+", extra), lambda: _with_extra(convert.glyph_set(), extra))
+    key = "".join(sorted(set(exclude) & set(full.chars)))
+    if not key:
+        return full if extra else None
+    return _remembered(("-", key, extra), lambda: full.without(key))
 
 
 def entry(image_id):
@@ -216,8 +237,8 @@ def entry(image_id):
 
 def options_of(req):
     """リクエストを Session.render の設定にする（塗りと線画の直しの data URL は画像にする）。
-    使わない文字（exclude）は、_engine を持ってから glyphs_without で辞書にする。"""
-    options = req.model_dump(exclude={"paint", "edit", "exclude", "scale", "current"})
+    使わない文字（exclude）と足した文字（extra）は、_engine を持ってから glyphs_for で辞書にする。"""
+    options = req.model_dump(exclude={"paint", "edit", "exclude", "extra", "scale", "current"})
     options.update(paint=decode_mask(req.paint), edit=decode_mask(req.edit, "線画の直し"))
     return options
 
@@ -354,7 +375,7 @@ def post_render(image_id: str, req: RenderRequest):
     t = time.perf_counter()
     with _engine:
         s = e.session(req.scale)
-        lines = s.render(glyphs=glyphs_without(req.exclude), **options)
+        lines = s.render(glyphs=glyphs_for(req.exclude, req.extra), **options)
     return dict(lines=lines, **size_of(s), ms=int((time.perf_counter() - t) * 1000))
 
 
@@ -367,7 +388,7 @@ def post_row(image_id: str, row: int, req: RowRequest):
         s = e.session(req.scale)
         if not 0 <= row < s.rows:
             raise HTTPException(400, "行の番号が範囲の外です")
-        found = s.row_options(row, dict(options, glyphs=glyphs_without(req.exclude)), req.current)
+        found = s.row_options(row, dict(options, glyphs=glyphs_for(req.exclude, req.extra)), req.current)
     return dict(row=row, options=found, ms=int((time.perf_counter() - t) * 1000))
 
 

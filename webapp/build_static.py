@@ -106,10 +106,17 @@ def stamp(out):
     for p in files:
         h.update(p.relative_to(out).as_posix().encode() + b"\0" + p.read_bytes())
     version = h.hexdigest()[:10]
+    # 付けるのは、まとめたフォルダに実際にあるファイルを指す文字列だけ（モジュールはその JS から、データはページから
+    # 読むので、どちらかの場所から探す）。ダウンロードのファイル名（"asciiartme_dict.txt" など）には付けない
+    def refers(js_dir, path):
+        return any((base / path).resolve().is_file() for base in (js_dir, out))
+
     for p in files:
         if p.suffix == ".js":
-            rewrite(p, LOCAL_FILE, lambda m: f"{m[1]}{m[2]}?v={version}{m[1]}")
-    rewrite(out / "index.html", HTML_REF, lambda m: f"{m[1]}{m[2]}?v={version}{m[3]}")
+            rewrite(p, LOCAL_FILE,
+                    lambda m, d=p.parent: f"{m[1]}{m[2]}?v={version}{m[1]}" if refers(d, m[2]) else m[0])
+    rewrite(out / "index.html", HTML_REF,
+            lambda m: f"{m[1]}{m[2]}?v={version}{m[3]}" if refers(out, m[2]) else m[0])
     return version
 
 

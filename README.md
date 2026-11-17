@@ -138,6 +138,12 @@ groups (symbols, half-width kana, katakana, hiragana, letters and digits, kanji,
 Cyrillic) or single characters off, for example round letters that land on lines. The characters
 the current AA uses are listed first, most used first. Spaces are always used. The choice is kept
 in the browser and applies to the candidates, the sizes, the finished AA and the row alternatives.
+Characters can also be added: type or paste them, and their shapes are drawn with MS PGothic 16px
+on your PC (exactly the dictionary's shapes; checked on all 551). Without MS PGothic they are drawn
+with Saitamaar, and only characters as wide as in MS PGothic can be added
+(`webapp/static/addable.json`, made by `node webapp/make_addable.mjs` on Windows, holds the
+MS PGothic widths; no glyph shapes are shipped). The characters in use can be saved as a dictionary
+file in the same format as `chrDict_*.txt` and loaded again.
 
 The interface is in Japanese and English. It follows the browser's language (Japanese for `ja`,
 English otherwise); the button at the top right switches it (the choice is kept in the browser),

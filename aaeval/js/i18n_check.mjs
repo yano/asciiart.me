@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { EN, EN_ENGINE, EN_PATTERNS } from "../../webapp/static/i18n_en.js";
 
 const STATIC = "webapp/static";
-const UI_FILES = ["app.js", "compare.js", "aa.js", "engine.js", "engine_local.js", "engine_server.js"];
+const UI_FILES = ["app.js", "compare.js", "aa.js", "addglyph.js", "engine.js", "engine_local.js", "engine_server.js"];
 const ENGINE_FILES = readdirSync(join(STATIC, "aame")).filter((f) => f.endsWith(".js")).map((f) => `aame/${f}`);
 // 訳さない日本語（フォントの名前、文字の幅を測る字など）
 const KEEP = new Set(["ＭＳ Ｐゴシック", "あ", "ミ", "日本語", "Language / 言語"]);

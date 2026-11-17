@@ -297,10 +297,20 @@
       <button value="cancel" class="ghost">閉じる</button>
     </div>
     <p class="note">文字を押すと、使う・使わないが切り替わります。外した文字（薄い赤）は AA に使いません（候補、大きさ、仕上げ、行の候補のすべて）。線の上に丸い文字が当たるときなどに外してください。選んだ文字はこのブラウザで覚えます。</p>
+    <div class="dictadd">
+      <label for="dictAddText"><b>文字を足す</b></label>
+      <input id="dictAddText" type="text" maxlength="200" autocomplete="off" spellcheck="false" placeholder="足したい文字を打つか貼り付け">
+      <button type="button" id="dictAddBtn" class="primary small" disabled>足す</button>
+      <span id="dictAddMode" class="muted"></span>
+      <div id="dictAddPreview" class="addpreview"></div>
+    </div>
     <div id="dictBody" class="dictbody"></div>
     <div class="dictfoot">
       <button type="button" id="dictAll" class="ghost">すべて使う</button>
-      <span class="spacer"></span>
+      <button type="button" id="dictSave" class="ghost" title="使う文字（足した文字を含み、外した文字を除く）を、辞書のファイル（標準の辞書と同じ形式）に保存します">辞書を保存</button>
+      <button type="button" id="dictLoad" class="ghost" title="保存した辞書のファイルを読みます。ファイルに無い文字は外し、標準の辞書に無い文字は足します">辞書を読み込む</button>
+      <input id="dictFile" type="file" accept=".txt,text/plain" hidden>
+      <span id="dictMsg" class="muted dictmsg"></span>
       <button value="cancel" class="ghost">やめる</button>
       <button value="ok" id="dictOk" class="primary">この文字で作り直す</button>
     </div>

@@ -39,6 +39,22 @@ export class GlyphSet {
 
   bitmap(i) { return this.bitmaps.subarray(i * CELL, (i + 1) * CELL); }
 
+  // other の文字のうち、この辞書に無いものを後ろに足した辞書（足した文字。同じ点なら元の文字が先に選ばれる）。
+  // 足すものが無ければ自分を返す。
+  plus(other) {
+    const seen = new Set(this.chars);
+    const add = [];
+    for (let i = 0; i < other.size; i++) {
+      if (!seen.has(other.chars[i])) { seen.add(other.chars[i]); add.push(i); }
+    }
+    if (!add.length) return this;
+    const bitmaps = new Uint8Array((this.size + add.length) * CELL);
+    bitmaps.set(this.bitmaps.subarray(0, this.size * CELL));
+    add.forEach((i, j) => bitmaps.set(other.bitmap(i), (this.size + j) * CELL));
+    return new GlyphSet(this.chars.concat(add.map((i) => other.chars[i])),
+      Array.from(this.widths).concat(add.map((i) => other.widths[i])), bitmaps);
+  }
+
   // chars の文字を外した辞書（並び順はそのまま）。インクの無い文字（空白）は外さない
   // （当てはめが隙間を埋めるのに使うため）。外す文字が無ければ自分を返す。
   without(chars) {
@@ -53,16 +69,20 @@ export class GlyphSet {
 }
 
 // 辞書のファイル（chrDict_*.txt）を読む。1行目が文字数、そのあと文字ごとに「文字」「幅」「18 行の 0/1」。
+// 行が足りないファイルや、幅が MIN_W〜MAX_W に無い文字は例外にする。
 export function parseDict(text) {
   const lines = text.replace(/\r\n/g, "\n").split("\n");
   if (lines.length && lines[0].startsWith("﻿")) lines[0] = lines[0].slice(1);
   const n = parseInt(lines[0], 10);
+  if (!(n >= 0) || lines.length < 1 + n * (2 + ROW_H)) throw new Error("辞書の形式ではありません");
   const chars = [], widths = [];
   const bitmaps = new Uint8Array(n * CELL);
   let at = 1;
   for (let i = 0; i < n; i++) {
+    if (!lines[at]) throw new Error("辞書の形式ではありません");
     chars.push(String.fromCodePoint(lines[at].codePointAt(0)));
     const w = parseInt(lines[at + 1].trim(), 10);
+    if (!(w >= MIN_W && w <= MAX_W)) throw new Error("辞書の形式ではありません");
     widths.push(w);
     for (let y = 0; y < ROW_H; y++) {
       const row = lines[at + 2 + y] || "";
